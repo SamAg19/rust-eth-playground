@@ -4,7 +4,7 @@ use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
 // 20 bytes is small enough that implicit copying is desirable and matches how addresses are used throughout Ethereum codebases.
-#[derive(Copy, Clone)]
+#[derive(alloy_rlp::RlpEncodable, alloy_rlp::RlpDecodable, Copy, Clone)]
 pub struct Address([u8; 20]);
 
 #[allow(clippy::derivable_impls)]

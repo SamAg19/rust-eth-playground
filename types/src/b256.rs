@@ -3,7 +3,7 @@ use std::fmt::{self, Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
-#[derive(Copy, Clone)]
+#[derive(alloy_rlp::RlpEncodable, alloy_rlp::RlpDecodable, Copy, Clone)]
 pub struct B256([u8; 32]);
 
 #[allow(clippy::derivable_impls)]
