@@ -13,7 +13,7 @@ pub enum DecodeError {
 }
 
 #[derive(Debug, Error)]
-pub enum ExecutionError {
+pub enum TransactionError {
     #[error("Insufficient balance: available {available}, required {required}")]
     InsufficientBalance { available: u128, required: u128 },
     #[error("Out of gas: limit {limit}, used {used}")]
@@ -24,9 +24,9 @@ pub enum ExecutionError {
     Overflow,
     #[error("Insufficient max fee: base {base_fee}, max {max_fee}")]
     InsufficientMaxFee { base_fee: u128, max_fee: u128 },
-    // `#[from]` generates `impl From<DecodeError> for ExecutionError`, which lets
-    // the `?` operator automatically convert `DecodeError` into `ExecutionError`
-    // in any function returning Result<_, ExecutionError>.
+    // `#[from]` generates `impl From<DecodeError> for TransactionError`, which lets
+    // the `?` operator automatically convert `DecodeError` into `TransactionError`
+    // in any function returning Result<_, TransactionError>.
     #[error(transparent)]
     Decode(#[from] DecodeError),
 }
@@ -67,7 +67,7 @@ mod tests {
 
     #[test]
     fn test_execution_error() {
-        let insufficient_balance = ExecutionError::InsufficientBalance {
+        let insufficient_balance = TransactionError::InsufficientBalance {
             available: 100,
             required: 150,
         };
@@ -76,7 +76,7 @@ mod tests {
             "Insufficient balance: available 100, required 150"
         );
 
-        let out_of_gas = ExecutionError::OutOfGas {
+        let out_of_gas = TransactionError::OutOfGas {
             limit: 21000,
             used: 22000,
         };
@@ -85,7 +85,7 @@ mod tests {
             "Out of gas: limit 21000, used 22000"
         );
 
-        let invalid_nonce = ExecutionError::InvalidNonce {
+        let invalid_nonce = TransactionError::InvalidNonce {
             expected: 1,
             actual: 0,
         };
@@ -94,10 +94,10 @@ mod tests {
             "Invalid nonce: expected 1, found 0"
         );
 
-        let overflow = ExecutionError::Overflow;
+        let overflow = TransactionError::Overflow;
         assert_eq!(overflow.to_string(), "Overflow error");
 
-        let insufficient_max_fee = ExecutionError::InsufficientMaxFee {
+        let insufficient_max_fee = TransactionError::InsufficientMaxFee {
             base_fee: 101,
             max_fee: 100,
         };
@@ -106,8 +106,8 @@ mod tests {
             "Insufficient max fee: base 101, max 100"
         );
 
-        let execution_error_from_decode: ExecutionError =
-            ExecutionError::Decode(DecodeError::UnexpectedPrefix(100));
+        let execution_error_from_decode: TransactionError =
+            TransactionError::Decode(DecodeError::UnexpectedPrefix(100));
         assert_eq!(
             execution_error_from_decode.to_string(),
             "Unexpected prefix found: 100"
@@ -116,7 +116,7 @@ mod tests {
 
     #[test]
     fn test_from_decode_error_via_question_mark() {
-        fn helper() -> Result<(), ExecutionError> {
+        fn helper() -> Result<(), TransactionError> {
             Err(DecodeError::InputTooShort {
                 expected: 32,
                 actual: 20,

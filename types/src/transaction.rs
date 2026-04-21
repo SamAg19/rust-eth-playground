@@ -1,9 +1,9 @@
 use crate::address::Address;
 use crate::b256::B256;
-use crate::execution_error::ExecutionError;
+use crate::transaction_error::TransactionError;
 use std::cmp::min;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct AccessListItem {
     pub address: Address,
     pub storage_keys: Vec<B256>,
@@ -14,7 +14,7 @@ pub struct AccessListItem {
 // to
 // value
 // data
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Transaction {
     Legacy {
         nonce: u64,
@@ -49,7 +49,7 @@ pub enum Transaction {
 }
 
 impl Transaction {
-    pub fn tx_type(&self) -> Result<u8, ExecutionError> {
+    pub fn tx_type(&self) -> Result<u8, TransactionError> {
         match self {
             Transaction::Legacy { .. } => Ok(0),
             Transaction::Eip1559 { .. } => Ok(1),
@@ -57,7 +57,7 @@ impl Transaction {
         }
     }
 
-    pub fn is_create(&self) -> Result<bool, ExecutionError> {
+    pub fn is_create(&self) -> Result<bool, TransactionError> {
         match self {
             Transaction::Legacy { to, .. }
             | Transaction::Eip1559 { to, .. }
@@ -65,7 +65,7 @@ impl Transaction {
         }
     }
 
-    pub fn effective_gas_price(&self, base_fee: u128) -> Result<u128, ExecutionError> {
+    pub fn effective_gas_price(&self, base_fee: u128) -> Result<u128, TransactionError> {
         match self {
             Transaction::Legacy { gas_price, .. } => Ok(*gas_price),
             Transaction::Eip1559 {
@@ -79,21 +79,21 @@ impl Transaction {
                 ..
             } => {
                 if base_fee > *max_fee_per_gas {
-                    return Err(ExecutionError::InsufficientMaxFee {
+                    return Err(TransactionError::InsufficientMaxFee {
                         base_fee,
                         max_fee: *max_fee_per_gas,
                     });
                 }
                 let addition = base_fee
                     .checked_add(*max_priority_fee_per_gas)
-                    .ok_or(ExecutionError::Overflow)?;
+                    .ok_or(TransactionError::Overflow)?;
                 let effective_gas_price = min(*max_fee_per_gas, addition);
                 Ok(effective_gas_price)
             }
         }
     }
 
-    pub fn max_cost(&self) -> Result<u128, ExecutionError> {
+    pub fn max_cost(&self) -> Result<u128, TransactionError> {
         match self {
             Transaction::Legacy {
                 gas_price,
@@ -103,10 +103,10 @@ impl Transaction {
             } => {
                 let multiplication = gas_price
                     .checked_mul((*gas_limit).into())
-                    .ok_or(ExecutionError::Overflow)?;
+                    .ok_or(TransactionError::Overflow)?;
                 let max_cost = multiplication
                     .checked_add(*value)
-                    .ok_or(ExecutionError::Overflow)?;
+                    .ok_or(TransactionError::Overflow)?;
                 Ok(max_cost)
             }
             Transaction::Eip1559 {
@@ -123,10 +123,10 @@ impl Transaction {
             } => {
                 let multiplication = max_fee_per_gas
                     .checked_mul((*gas_limit).into())
-                    .ok_or(ExecutionError::Overflow)?;
+                    .ok_or(TransactionError::Overflow)?;
                 let max_cost = multiplication
                     .checked_add(*value)
-                    .ok_or(ExecutionError::Overflow)?;
+                    .ok_or(TransactionError::Overflow)?;
                 Ok(max_cost)
             }
         }
@@ -140,7 +140,7 @@ pub struct TransactionSummary {
     pub tx_count: usize,
 }
 
-pub fn summarise_transactions(txs: &[Transaction]) -> Result<TransactionSummary, ExecutionError> {
+pub fn summarise_transactions(txs: &[Transaction]) -> Result<TransactionSummary, TransactionError> {
     let mut total_value = 0;
     let mut total_gas_limit = 0;
     let mut create_count = 0;
@@ -161,10 +161,10 @@ pub fn summarise_transactions(txs: &[Transaction]) -> Result<TransactionSummary,
 
         total_value = value
             .checked_add(total_value)
-            .ok_or(ExecutionError::Overflow)?;
+            .ok_or(TransactionError::Overflow)?;
         total_gas_limit = gas_limit
             .checked_add(total_gas_limit)
-            .ok_or(ExecutionError::Overflow)?;
+            .ok_or(TransactionError::Overflow)?;
         if tx.is_create()? {
             create_count += 1;
         }
@@ -294,7 +294,7 @@ mod tests {
         // Case where base fee exceeds max fee
         assert!(matches!(
             eip1559_tx.effective_gas_price(101),
-            Err(ExecutionError::InsufficientMaxFee {
+            Err(TransactionError::InsufficientMaxFee {
                 base_fee: 101,
                 max_fee: 100
             })
@@ -325,7 +325,7 @@ mod tests {
         // Case where base fee exceeds max fee
         assert!(matches!(
             eip4844_tx.effective_gas_price(101),
-            Err(ExecutionError::InsufficientMaxFee {
+            Err(TransactionError::InsufficientMaxFee {
                 base_fee: 101,
                 max_fee: 100
             })
@@ -347,7 +347,7 @@ mod tests {
 
         assert!(matches!(
             eip1559_tx.effective_gas_price(1),
-            Err(ExecutionError::Overflow)
+            Err(TransactionError::Overflow)
         ));
     }
 
@@ -420,7 +420,7 @@ mod tests {
 
         assert!(matches!(
             eip1559_tx.max_cost(),
-            Err(ExecutionError::Overflow)
+            Err(TransactionError::Overflow)
         ));
     }
 
@@ -512,7 +512,7 @@ mod tests {
 
         assert!(matches!(
             summarise_transactions(&txs),
-            Err(ExecutionError::Overflow)
+            Err(TransactionError::Overflow)
         ));
     }
 }
