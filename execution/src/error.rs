@@ -31,8 +31,17 @@ pub enum ExecutionError {
         expected: u64,
         actual: u64,
     },
+    #[error("block body has too many transactions: limit {limit}, got {actual}")]
+    TooManyTransactions { limit: usize, actual: usize },
+    #[error("invalid block number: expected {expected}, got {actual}")]
+    InvalidBlockNumber {
+        expected: BlockNumber,
+        actual: BlockNumber,
+    },
     #[error("arithmetic overflow")]
     Overflow,
+    #[error("arithmetic underflow")]
+    Underflow,
     #[error(transparent)]
     Transaction(#[from] TransactionError),
 }

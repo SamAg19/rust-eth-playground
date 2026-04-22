@@ -12,20 +12,21 @@ pub struct Header {
     pub logs_bloom: Bloom,
     pub gas_limit: u64,
     pub gas_used: u64,
-    pub hash: B256
+    pub base_fee_per_gas: u128,
+    pub hash: B256,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Block {
     pub header: Header,
-    pub transactions: Vec<Transaction>
+    pub transactions: Vec<Transaction>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Log {
     pub address: Address,
     pub topics: Vec<B256>,
-    pub data: Vec<u8>
+    pub data: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -42,7 +43,7 @@ pub struct Receipt {
     pub gas_used: u64,
     pub status: bool,
     pub logs: Vec<Log>,
-    pub logs_bloom: Bloom
+    pub logs_bloom: Bloom,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -56,41 +57,16 @@ pub struct AccountInfo {
 impl Default for AccountInfo {
     fn default() -> Self {
         let byte_arr: [u8; 32] = [
-            0xc5, 
-            0xd2, 
-            0x46, 
-            0x01, 
-            0x86, 
-            0xf7, 
-            0x23, 
-            0x3c, 
-            0x92, 
-            0x7e, 
-            0x7d, 
-            0xb2, 
-            0xdc, 
-            0xc7, 
-            0x03, 
-            0xc0, 
-            0xe5, 
-            0x00, 
-            0xb6, 
-            0x53, 
-            0xca, 
-            0x82, 
-            0x27, 
-            0x3b, 
-            0x7b, 
-            0xfa, 
-            0xd8, 
-            0x04, 
-            0x5d, 
-            0x85, 
-            0xa4, 
-            0x70
+            0xc5, 0xd2, 0x46, 0x01, 0x86, 0xf7, 0x23, 0x3c, 0x92, 0x7e, 0x7d, 0xb2, 0xdc, 0xc7,
+            0x03, 0xc0, 0xe5, 0x00, 0xb6, 0x53, 0xca, 0x82, 0x27, 0x3b, 0x7b, 0xfa, 0xd8, 0x04,
+            0x5d, 0x85, 0xa4, 0x70,
         ];
         let default_hash = B256::from(byte_arr);
-        Self {  balance:0 , nonce: 0, code_hash: default_hash, code: None }
+        Self {
+            balance: 0,
+            nonce: 0,
+            code_hash: default_hash,
+            code: None,
+        }
     }
 }
-

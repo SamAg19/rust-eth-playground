@@ -2,8 +2,13 @@ use std::{cell::RefCell, collections::HashMap};
 
 use types::{Address, B256};
 
-use crate::{error::ExecutionError, primitives::{AccountInfo, Block, BlockNumber, Header, Receipt}, providers::{BlockProvider, HeaderProvider, ReceiptProvider, StateProvider, TransactionProvider}};
-
+use crate::{
+    error::ExecutionError,
+    primitives::{AccountInfo, Block, BlockNumber, Header, Receipt},
+    providers::{
+        BlockProvider, HeaderProvider, ReceiptProvider, StateProvider, TransactionProvider,
+    },
+};
 
 // Interior mutability: provider trait methods take `&self`, but caching requires
 // writing to the cache on a read. The three options are:
@@ -14,7 +19,9 @@ use crate::{error::ExecutionError, primitives::{AccountInfo, Block, BlockNumber,
 // `RefCell` is used here because this crate is synchronous and single-threaded.
 // A production implementation would swap this for `Mutex`, `RwLock`, or a
 // concurrent hash map (e.g. `dashmap`) to support sharing across tasks/threads.
-pub struct CachedProvider<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + ReceiptProvider> {
+pub struct CachedProvider<
+    T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + ReceiptProvider,
+> {
     inner: T,
     block_cache: RefCell<HashMap<BlockNumber, Block>>,
     header_cache: RefCell<HashMap<B256, Header>>,
@@ -22,19 +29,23 @@ pub struct CachedProvider<T: BlockProvider + HeaderProvider + StateProvider + Tr
     capacity: usize,
 }
 
-impl<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + ReceiptProvider> CachedProvider<T> {
+impl<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + ReceiptProvider>
+    CachedProvider<T>
+{
     pub fn new(inner: T, capacity: usize) -> Self {
         Self {
             inner,
             block_cache: RefCell::new(HashMap::new()),
             header_cache: RefCell::new(HashMap::new()),
             account_cache: RefCell::new(HashMap::new()),
-            capacity
+            capacity,
         }
     }
 }
 
-impl<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + ReceiptProvider> BlockProvider for CachedProvider<T> {
+impl<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + ReceiptProvider>
+    BlockProvider for CachedProvider<T>
+{
     fn get_block_by_hash(&self, hash: B256) -> Result<Block, ExecutionError> {
         let block = self.inner.get_block_by_hash(hash)?;
         {
@@ -45,13 +56,13 @@ impl<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + R
             }
         }
 
-        let evicted = { 
-            let cache = self.block_cache.borrow(); 
-            if cache.len() >= self.capacity { 
-                cache.keys().next().copied() 
-            } else { 
-                None 
-            } 
+        let evicted = {
+            let cache = self.block_cache.borrow();
+            if cache.len() >= self.capacity {
+                cache.keys().next().copied()
+            } else {
+                None
+            }
         };
         let mut cache = self.block_cache.borrow_mut();
         if let Some(key) = evicted {
@@ -71,13 +82,13 @@ impl<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + R
             }
         }
         let block = self.inner.get_block_by_number(number)?;
-        let evicted = { 
-            let cache = self.block_cache.borrow(); 
-            if cache.len() >= self.capacity { 
-                cache.keys().next().copied() 
-            } else { 
-                None 
-            } 
+        let evicted = {
+            let cache = self.block_cache.borrow();
+            if cache.len() >= self.capacity {
+                cache.keys().next().copied()
+            } else {
+                None
+            }
         };
         let mut cache = self.block_cache.borrow_mut();
         if let Some(key) = evicted {
@@ -89,21 +100,22 @@ impl<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + R
     }
 }
 
-impl<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + ReceiptProvider> HeaderProvider for CachedProvider<T> {
+impl<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + ReceiptProvider>
+    HeaderProvider for CachedProvider<T>
+{
     fn get_header_by_hash(&self, hash: B256) -> Result<Header, ExecutionError> {
         {
-            let cache = self.header_cache.borrow(); 
+            let cache = self.header_cache.borrow();
 
             if let Some(value) = cache.get(&hash) {
                 return Ok(value.clone());
             }
-            
         }
 
         let header = self.inner.get_header_by_hash(hash)?;
 
         let evicted = {
-            let cache = self.header_cache.borrow(); 
+            let cache = self.header_cache.borrow();
             if cache.len() >= self.capacity {
                 cache.keys().next().copied()
             } else {
@@ -149,7 +161,9 @@ impl<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + R
     }
 }
 
-impl<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + ReceiptProvider> StateProvider for CachedProvider<T> {
+impl<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + ReceiptProvider>
+    StateProvider for CachedProvider<T>
+{
     fn get_account(&self, address: Address) -> Result<AccountInfo, ExecutionError> {
         {
             let cache = self.account_cache.borrow();
@@ -160,13 +174,13 @@ impl<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + R
         }
 
         let info = self.inner.get_account(address)?;
-        let evicted = { 
-            let cache = self.account_cache.borrow(); 
-            if cache.len() >= self.capacity { 
-                cache.keys().next().copied() 
-            } else { 
-                None 
-            } 
+        let evicted = {
+            let cache = self.account_cache.borrow();
+            if cache.len() >= self.capacity {
+                cache.keys().next().copied()
+            } else {
+                None
+            }
         };
 
         let mut cache = self.account_cache.borrow_mut();
@@ -183,8 +197,13 @@ impl<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + R
     }
 }
 
-impl<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + ReceiptProvider> TransactionProvider for CachedProvider<T> {
-    fn get_block_transactions(&self, block_number: BlockNumber) -> Result<Vec<types::Transaction>, ExecutionError> {
+impl<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + ReceiptProvider>
+    TransactionProvider for CachedProvider<T>
+{
+    fn get_block_transactions(
+        &self,
+        block_number: BlockNumber,
+    ) -> Result<Vec<types::Transaction>, ExecutionError> {
         self.inner.get_block_transactions(block_number)
     }
 
@@ -193,7 +212,9 @@ impl<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + R
     }
 }
 
-impl<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + ReceiptProvider> ReceiptProvider for CachedProvider<T> {
+impl<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + ReceiptProvider>
+    ReceiptProvider for CachedProvider<T>
+{
     fn get_receipt(&self, transaction_hash: B256) -> Result<Receipt, ExecutionError> {
         self.inner.get_receipt(transaction_hash)
     }
@@ -260,7 +281,10 @@ mod tests {
         fn get_transaction(&self, hash: B256) -> Result<Transaction, ExecutionError> {
             self.inner.get_transaction(hash)
         }
-        fn get_block_transactions(&self, block_number: BlockNumber) -> Result<Vec<Transaction>, ExecutionError> {
+        fn get_block_transactions(
+            &self,
+            block_number: BlockNumber,
+        ) -> Result<Vec<Transaction>, ExecutionError> {
             self.inner.get_block_transactions(block_number)
         }
     }
@@ -281,6 +305,7 @@ mod tests {
             logs_bloom: Bloom::zero(),
             gas_limit: 30_000_000,
             gas_used: 0,
+            base_fee_per_gas: 1_000_000_000,
             hash: B256::new([number as u8; 32]),
         }
     }

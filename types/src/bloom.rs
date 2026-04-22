@@ -1,6 +1,7 @@
 use crate::error;
 use std::fmt::{self, Display, Formatter};
 use std::hash::{Hash, Hasher};
+use std::ops::BitOrAssign;
 use std::str::FromStr;
 
 // Not Copy — 256 bytes is large enough that implicit stack copies would be wasteful. Callers should clone or borrow explicitly.
@@ -98,6 +99,13 @@ impl FromStr for Bloom {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::try_from(error::decode_hex(s)?.as_slice())
     }
+}
+impl BitOrAssign<&Bloom> for Bloom {                                                                                  
+    fn bitor_assign(&mut self, rhs: &Bloom) {                                                                                       
+        for (a, b) in self.0.iter_mut().zip(rhs.0.iter()) {                                                                         
+            *a |= *b;                                                                                                               
+        }                                                                                                                           
+    }                                                     
 }
 
 impl Bloom {

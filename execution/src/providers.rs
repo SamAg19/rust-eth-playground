@@ -1,10 +1,13 @@
 use types::{Address, B256, Transaction};
 
-use crate::{error::ExecutionError, primitives::{AccountInfo, Block, BlockNumber, Header, Receipt}};
+use crate::{
+    error::ExecutionError,
+    primitives::{AccountInfo, Block, BlockNumber, Header, Receipt},
+};
 
-// a component that only needs headers should not be forced to depend on receipt logic; 
-// testing a component that uses headers is simpler if it only needs to mock `HeaderProvider`; 
-// composing subsets is easy with supertrait bounds; 
+// a component that only needs headers should not be forced to depend on receipt logic;
+// testing a component that uses headers is simpler if it only needs to mock `HeaderProvider`;
+// composing subsets is easy with supertrait bounds;
 // splitting is the approach Reth uses in production.
 
 pub trait BlockProvider {
@@ -36,16 +39,25 @@ pub trait StateProvider {
 
 pub trait TransactionProvider {
     fn get_transaction(&self, hash: B256) -> Result<Transaction, ExecutionError>;
-    fn get_block_transactions(&self, block_number: BlockNumber) -> Result<Vec<Transaction>, ExecutionError>;
+    fn get_block_transactions(
+        &self,
+        block_number: BlockNumber,
+    ) -> Result<Vec<Transaction>, ExecutionError>;
 }
 
 pub trait ReceiptProvider {
     fn get_receipt(&self, transaction_hash: B256) -> Result<Receipt, ExecutionError>;
 }
 
-// a function that requires `T: FullProvider` is equivalent to requiring all five individual bounds, but more concise. 
-// The blanket impl means implementors never need to write `impl FullProvider for MyType {}` explicitly — 
+// a function that requires `T: FullProvider` is equivalent to requiring all five individual bounds, but more concise.
+// The blanket impl means implementors never need to write `impl FullProvider for MyType {}` explicitly —
 // they just implement the five individual traits and get `FullProvider` for free.
-pub trait FullProvider: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + ReceiptProvider {}
+pub trait FullProvider:
+    BlockProvider + HeaderProvider + StateProvider + TransactionProvider + ReceiptProvider
+{
+}
 
-impl<T> FullProvider for T where T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + ReceiptProvider {}
+impl<T> FullProvider for T where
+    T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + ReceiptProvider
+{
+}

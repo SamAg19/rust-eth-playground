@@ -3,7 +3,11 @@ use std::collections::HashMap;
 use types::{Address, B256, Transaction};
 
 use crate::{
-    error::ExecutionError, primitives::{AccountInfo, Block, BlockNumber, Header, Receipt}, providers::{BlockProvider, HeaderProvider, ReceiptProvider, StateProvider, TransactionProvider}
+    error::ExecutionError,
+    primitives::{AccountInfo, Block, BlockNumber, Header, Receipt},
+    providers::{
+        BlockProvider, HeaderProvider, ReceiptProvider, StateProvider, TransactionProvider,
+    },
 };
 
 #[derive(Debug, Default)]
@@ -18,11 +22,17 @@ pub struct InMemoryProvider {
 
 impl InMemoryProvider {
     pub fn insert_block(&mut self, block: Block) {
-        self.blocks_by_hash.insert(block.header.hash, block.header.block_number);
+        self.blocks_by_hash
+            .insert(block.header.hash, block.header.block_number);
         self.blocks.insert(block.header.block_number, block);
     }
 
-    pub fn insert_transaction(&mut self, hash: B256, transaction: Transaction, block_number: BlockNumber) {
+    pub fn insert_transaction(
+        &mut self,
+        hash: B256,
+        transaction: Transaction,
+        block_number: BlockNumber,
+    ) {
         self.transactions.insert(hash, (transaction, block_number));
     }
 
@@ -41,47 +51,82 @@ impl InMemoryProvider {
 
 impl BlockProvider for InMemoryProvider {
     fn get_block_by_number(&self, number: BlockNumber) -> Result<Block, ExecutionError> {
-        self.blocks.get(&number).cloned().ok_or(ExecutionError::BlockNotFound { number })
+        self.blocks
+            .get(&number)
+            .cloned()
+            .ok_or(ExecutionError::BlockNotFound { number })
     }
-    
+
     fn get_block_by_hash(&self, hash: B256) -> Result<Block, ExecutionError> {
-        let number = self.blocks_by_hash.get(&hash).ok_or(ExecutionError::HeaderNotFound { hash })?;
+        let number = self
+            .blocks_by_hash
+            .get(&hash)
+            .ok_or(ExecutionError::HeaderNotFound { hash })?;
         self.get_block_by_number(*number)
     }
 }
 
 impl HeaderProvider for InMemoryProvider {
     fn get_header_by_hash(&self, hash: B256) -> Result<Header, ExecutionError> {
-        let number = self.blocks_by_hash.get(&hash).ok_or(ExecutionError::HeaderNotFound { hash })?;
+        let number = self
+            .blocks_by_hash
+            .get(&hash)
+            .ok_or(ExecutionError::HeaderNotFound { hash })?;
         self.get_header_by_number(*number)
     }
     fn get_header_by_number(&self, number: BlockNumber) -> Result<Header, ExecutionError> {
-        self.blocks.get(&number).map(|b| b.header.clone()).ok_or(ExecutionError::BlockNotFound { number })
+        self.blocks
+            .get(&number)
+            .map(|b| b.header.clone())
+            .ok_or(ExecutionError::BlockNotFound { number })
     }
 }
 
 impl StateProvider for InMemoryProvider {
     fn get_account(&self, address: Address) -> Result<AccountInfo, ExecutionError> {
-        self.state.get(&address).cloned().ok_or(ExecutionError::AccountNotFound { address })
+        self.state
+            .get(&address)
+            .cloned()
+            .ok_or(ExecutionError::AccountNotFound { address })
     }
     fn get_storage(&self, address: Address, slot: B256) -> Result<B256, ExecutionError> {
-        Ok(self.storage.get(&(address, slot)).copied().unwrap_or_default())
+        Ok(self
+            .storage
+            .get(&(address, slot))
+            .copied()
+            .unwrap_or_default())
     }
 }
 
 impl TransactionProvider for InMemoryProvider {
     fn get_transaction(&self, hash: B256) -> Result<Transaction, ExecutionError> {
-        self.transactions.get(&hash).map(|(tx, _)| tx.clone() ).ok_or(ExecutionError::TransactionNotFound { hash })
+        self.transactions
+            .get(&hash)
+            .map(|(tx, _)| tx.clone())
+            .ok_or(ExecutionError::TransactionNotFound { hash })
     }
 
-    fn get_block_transactions(&self, block_number: BlockNumber) -> Result<Vec<Transaction>, ExecutionError> {
-        self.blocks.get(&block_number).map(|b| b.transactions.clone()).ok_or(ExecutionError::BlockNotFound { number: block_number })
+    fn get_block_transactions(
+        &self,
+        block_number: BlockNumber,
+    ) -> Result<Vec<Transaction>, ExecutionError> {
+        self.blocks
+            .get(&block_number)
+            .map(|b| b.transactions.clone())
+            .ok_or(ExecutionError::BlockNotFound {
+                number: block_number,
+            })
     }
 }
 
 impl ReceiptProvider for InMemoryProvider {
     fn get_receipt(&self, transaction_hash: B256) -> Result<Receipt, ExecutionError> {
-        self.receipts.get(&transaction_hash).cloned().ok_or(ExecutionError::ReceiptNotFound { hash: transaction_hash })
+        self.receipts
+            .get(&transaction_hash)
+            .cloned()
+            .ok_or(ExecutionError::ReceiptNotFound {
+                hash: transaction_hash,
+            })
     }
 }
 
@@ -94,15 +139,33 @@ mod tests {
     const BLOCK_NUMBER: BlockNumber = 7;
     const MISSING_NUMBER: BlockNumber = 9999;
 
-    fn block_hash() -> B256 { B256::new([0xaa; 32]) }
-    fn parent_hash() -> B256 { B256::new([0x99; 32]) }
-    fn tx_hash_1() -> B256 { B256::new([0x01; 32]) }
-    fn tx_hash_2() -> B256 { B256::new([0x02; 32]) }
-    fn missing_hash() -> B256 { B256::new([0xff; 32]) }
-    fn slot() -> B256 { B256::new([0x33; 32]) }
-    fn slot_value() -> B256 { B256::new([0x44; 32]) }
-    fn account_addr() -> Address { Address::new([0x11; 20]) }
-    fn missing_addr() -> Address { Address::new([0xfe; 20]) }
+    fn block_hash() -> B256 {
+        B256::new([0xaa; 32])
+    }
+    fn parent_hash() -> B256 {
+        B256::new([0x99; 32])
+    }
+    fn tx_hash_1() -> B256 {
+        B256::new([0x01; 32])
+    }
+    fn tx_hash_2() -> B256 {
+        B256::new([0x02; 32])
+    }
+    fn missing_hash() -> B256 {
+        B256::new([0xff; 32])
+    }
+    fn slot() -> B256 {
+        B256::new([0x33; 32])
+    }
+    fn slot_value() -> B256 {
+        B256::new([0x44; 32])
+    }
+    fn account_addr() -> Address {
+        Address::new([0x11; 20])
+    }
+    fn missing_addr() -> Address {
+        Address::new([0xfe; 20])
+    }
 
     fn make_tx(nonce: u64) -> Transaction {
         Transaction::Legacy {
@@ -125,6 +188,7 @@ mod tests {
             logs_bloom: Bloom::zero(),
             gas_limit: 30_000_000,
             gas_used: 42_000,
+            base_fee_per_gas: 1_000_000_000,
             hash: block_hash(),
         }
     }
@@ -182,7 +246,10 @@ mod tests {
         p.get_block_by_hash(h)
     }
 
-    fn fetch_header_by_number<P: HeaderProvider>(p: &P, n: BlockNumber) -> Result<Header, ExecutionError> {
+    fn fetch_header_by_number<P: HeaderProvider>(
+        p: &P,
+        n: BlockNumber,
+    ) -> Result<Header, ExecutionError> {
         p.get_header_by_number(n)
     }
 
@@ -206,15 +273,25 @@ mod tests {
         p.get_code(a)
     }
 
-    fn fetch_storage<P: StateProvider>(p: &P, a: Address, slot: B256) -> Result<B256, ExecutionError> {
+    fn fetch_storage<P: StateProvider>(
+        p: &P,
+        a: Address,
+        slot: B256,
+    ) -> Result<B256, ExecutionError> {
         p.get_storage(a, slot)
     }
 
-    fn fetch_transaction<P: TransactionProvider>(p: &P, h: B256) -> Result<Transaction, ExecutionError> {
+    fn fetch_transaction<P: TransactionProvider>(
+        p: &P,
+        h: B256,
+    ) -> Result<Transaction, ExecutionError> {
         p.get_transaction(h)
     }
 
-    fn fetch_block_transactions<P: TransactionProvider>(p: &P, n: BlockNumber) -> Result<Vec<Transaction>, ExecutionError> {
+    fn fetch_block_transactions<P: TransactionProvider>(
+        p: &P,
+        n: BlockNumber,
+    ) -> Result<Vec<Transaction>, ExecutionError> {
         p.get_block_transactions(n)
     }
 
@@ -265,20 +342,29 @@ mod tests {
         let p = populated();
         assert_eq!(fetch_balance(&p, account_addr()).unwrap(), 1_000_000);
         assert_eq!(fetch_nonce(&p, account_addr()).unwrap(), 5);
-        assert_eq!(fetch_code(&p, account_addr()).unwrap(), Some(vec![0xde, 0xad, 0xbe, 0xef]));
+        assert_eq!(
+            fetch_code(&p, account_addr()).unwrap(),
+            Some(vec![0xde, 0xad, 0xbe, 0xef])
+        );
     }
 
     #[test]
     fn storage_hit_returns_value() {
         let p = populated();
-        assert_eq!(fetch_storage(&p, account_addr(), slot()).unwrap(), slot_value());
+        assert_eq!(
+            fetch_storage(&p, account_addr(), slot()).unwrap(),
+            slot_value()
+        );
     }
 
     #[test]
     fn storage_miss_returns_zero() {
         let p = populated();
         let unset_slot = B256::new([0xee; 32]);
-        assert_eq!(fetch_storage(&p, account_addr(), unset_slot).unwrap(), B256::default());
+        assert_eq!(
+            fetch_storage(&p, account_addr(), unset_slot).unwrap(),
+            B256::default()
+        );
     }
 
     #[test]
