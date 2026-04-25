@@ -37,7 +37,7 @@ pub fn decode(input: &[u8]) -> Result<(RlpItem, &[u8]), RlpError> {
 
         let mut decoded: Vec<RlpItem> = vec![];
 
-        while payload_slice.is_empty() {
+        while !payload_slice.is_empty() {
             let (item, remaining) = decode(payload_slice)?;
             decoded.push(item);
             payload_slice = remaining;
@@ -57,7 +57,7 @@ pub fn decode(input: &[u8]) -> Result<(RlpItem, &[u8]), RlpError> {
 
         let mut decoded: Vec<RlpItem> = vec![];
 
-        while payload_slice.is_empty() {
+        while !payload_slice.is_empty() {
             let (item, remaining) = decode(payload_slice)?;
             decoded.push(item);
             payload_slice = remaining;

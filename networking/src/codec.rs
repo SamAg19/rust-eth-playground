@@ -66,13 +66,13 @@ impl Decoder for EthCodec {
         };
         match tag {
             MSG_PING => {
-                if fields.is_empty() {
+                if !fields.is_empty() {
                     return Err(NetworkError::Decode(RlpError::InvalidLength(fields.len())));
                 }
                 Ok(Some(Message::Ping))
             }
             MSG_PONG => {
-                if fields.is_empty() {
+                if !fields.is_empty() {
                     return Err(NetworkError::Decode(RlpError::InvalidLength(fields.len())));
                 }
                 Ok(Some(Message::Pong))
