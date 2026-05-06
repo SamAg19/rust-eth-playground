@@ -129,6 +129,8 @@ fn typed_to_wire(signed_tx: &SignedTransaction) -> Result<Bytes, RlpError> {
         Transaction::Legacy { .. } => 0x00,
         Transaction::Eip1559 { .. } => 0x02,
         Transaction::Eip4844 { .. } => 0x03,
+        #[cfg(feature = "optimism")]
+        Transaction::Deposit { .. } => 0x7e,
     };
 
     let mut buffer = BytesMut::new();
@@ -143,6 +145,8 @@ impl SignedTransaction {
         let bytes = match &self.transaction {
             Transaction::Legacy { .. } => legacy_to_wire(self)?,
             Transaction::Eip1559 { .. } | Transaction::Eip4844 { .. } => typed_to_wire(self)?,
+            #[cfg(feature = "optimism")]
+            Transaction::Deposit { .. } => todo!(),
         };
         Ok(keccak256(&bytes))
     }
@@ -260,6 +264,8 @@ fn typed_to_encoded_bytes(tx: &Transaction, chain_id: u64) -> Result<Bytes, RlpE
         Transaction::Legacy { .. } => 0x00,
         Transaction::Eip1559 { .. } => 0x02,
         Transaction::Eip4844 { .. } => 0x03,
+        #[cfg(feature = "optimism")]
+        Transaction::Deposit { .. } => 0x7e,
     };
 
     let mut buffer = BytesMut::new();
@@ -279,6 +285,8 @@ pub fn sign(
         Transaction::Eip1559 { .. } | Transaction::Eip4844 { .. } => {
             typed_to_encoded_bytes(transaction, chain_id)?
         }
+        #[cfg(feature = "optimism")]
+        Transaction::Deposit { .. } => todo!(),
     };
 
     let hash_bytes = keccak256(&payload);
@@ -311,6 +319,8 @@ pub fn sign(
                 + 35
         }
         Transaction::Eip1559 { .. } | Transaction::Eip4844 { .. } => recovery_id.to_byte() as u64,
+        #[cfg(feature = "optimism")]
+        Transaction::Deposit { .. } => todo!(),
     };
 
     Ok(SignedTransaction {
@@ -327,6 +337,8 @@ pub fn recover_sender(signed: &SignedTransaction, chain_id: u64) -> Result<Addre
         Transaction::Eip1559 { .. } | Transaction::Eip4844 { .. } => {
             typed_to_encoded_bytes(&signed.transaction, chain_id)?
         }
+        #[cfg(feature = "optimism")]
+        Transaction::Deposit { .. } => todo!(),
     };
 
     let hash_bytes = keccak256(&payload);
@@ -342,6 +354,8 @@ pub fn recover_sender(signed: &SignedTransaction, chain_id: u64) -> Result<Addre
             .and_then(|x| x.checked_sub(35))
             .ok_or(SigningError::InvalidSignature)?,
         Transaction::Eip1559 { .. } | Transaction::Eip4844 { .. } => signed.v,
+        #[cfg(feature = "optimism")]
+        Transaction::Deposit { .. } => todo!(),
     };
 
     if recovery_id_byte > 1 {

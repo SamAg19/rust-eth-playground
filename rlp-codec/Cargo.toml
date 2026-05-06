@@ -8,5 +8,7 @@ bytes = "1.11.1"
 thiserror = "2.0.18"
 k256 = { version = "0.13.4", features = ["ecdsa"] }
 sha3 = "0.11.0"
-types = { path = "../types" }
+types = { path = "../types", features = [] }
 
+[features]
+optimism=["types/optimism"]

@@ -46,6 +46,16 @@ pub enum Transaction {
         access_list: Vec<AccessListItem>,
         blob_versioned_hashes: Vec<B256>,
     },
+    #[cfg(feature = "optimism")]
+    Deposit {
+        source_hash: B256,
+        from: Address,
+        to: Option<Address>,
+        mint: u128,
+        value: u128,
+        gas_limit: u64,
+        data: Vec<u8>,
+    },
 }
 
 impl Transaction {
@@ -54,6 +64,8 @@ impl Transaction {
             Transaction::Legacy { .. } => Ok(0),
             Transaction::Eip1559 { .. } => Ok(1),
             Transaction::Eip4844 { .. } => Ok(2),
+            #[cfg(feature = "optimism")]
+            Transaction::Deposit { .. } => Ok(0x7e),
         }
     }
 
@@ -62,6 +74,8 @@ impl Transaction {
             Transaction::Legacy { to, .. }
             | Transaction::Eip1559 { to, .. }
             | Transaction::Eip4844 { to, .. } => Ok(to.is_none()),
+            #[cfg(feature = "optimism")]
+            Transaction::Deposit { to, .. } => Ok(to.is_none()),
         }
     }
 
@@ -90,6 +104,8 @@ impl Transaction {
                 let effective_gas_price = min(*max_fee_per_gas, addition);
                 Ok(effective_gas_price)
             }
+            #[cfg(feature = "optimism")]
+            Transaction::Deposit { .. } => Ok(0),
         }
     }
 
@@ -129,6 +145,8 @@ impl Transaction {
                     .ok_or(TransactionError::Overflow)?;
                 Ok(max_cost)
             }
+            #[cfg(feature = "optimism")]
+            Transaction::Deposit { .. } => Ok(0),
         }
     }
 }
@@ -155,6 +173,10 @@ pub fn summarise_transactions(txs: &[Transaction]) -> Result<TransactionSummary,
                 value, gas_limit, ..
             }
             | Transaction::Eip4844 {
+                value, gas_limit, ..
+            } => (value, gas_limit),
+            #[cfg(feature = "optimism")]
+            Transaction::Deposit {
                 value, gas_limit, ..
             } => (value, gas_limit),
         };

@@ -174,6 +174,53 @@ impl BlockExecutor for ValueTransferExecutor {
                     logs_bloom |= &receipt.logs_bloom;
                     receipts.push(receipt);
                 }
+                #[cfg(feature = "optimism")]
+                Transaction::Deposit {
+                    from,
+                    to,
+                    mint,
+                    value,
+                    ..
+                } => {
+                    let effective_gas_price = signed_tx
+                        .transaction
+                        .effective_gas_price(block_with_senders.block.header.base_fee_per_gas)?;
+
+                    if let Some(recipient_address) = to {
+                        let mut recipient =
+                            state.get_account(*recipient_address).or_else(|e| match e {
+                                ExecutionError::AccountNotFound { .. } => {
+                                    Ok(AccountInfo::default())
+                                }
+                                other => Err(other),
+                            })?;
+                        recipient.balance = recipient
+                            .balance
+                            .checked_add(mint.checked_add(*value).ok_or(ExecutionError::Overflow)?)
+                            .ok_or(ExecutionError::Overflow)?;
+                        state.set_account(*recipient_address, recipient);
+                    } else {
+                        todo!()
+                    }
+                    let receipt = Receipt {
+                        transaction_hash: signed_tx.hash()?,
+                        transaction_index: i as u64,
+                        block_hash: block_with_senders.block.header.hash,
+                        block_number: block_with_senders.block.header.block_number,
+                        from: *from,
+                        to: *to,
+                        contract_address: None,
+                        cumulative_gas_used,
+                        effective_gas_price,
+                        gas_used: 0,
+                        status: true,
+                        logs: vec![],
+                        logs_bloom: Bloom::zero(),
+                    };
+
+                    logs_bloom |= &receipt.logs_bloom;
+                    receipts.push(receipt);
+                }
             }
         }
 

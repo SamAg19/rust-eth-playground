@@ -6,5 +6,8 @@ edition = "2024"
 [dependencies]
 thiserror = "2.0.18"
 bytes = "1.11.1"
-types = { path = "../types" }
-rlp-codec = { path = "../rlp-codec" }
+types = { path = "../types", features = [] }
+rlp-codec = { path = "../rlp-codec", features = [] }
+
+[features]
+optimism=["types/optimism", "rlp-codec/optimism"]

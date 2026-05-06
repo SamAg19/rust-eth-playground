@@ -367,6 +367,8 @@ impl RlpEncodable for Transaction {
                         .collect(),
                 ));
             }
+            #[cfg(feature = "optimism")]
+            Transaction::Deposit { .. } => todo!(),
         }
 
         RlpItem::List(fields)
