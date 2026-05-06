@@ -100,12 +100,12 @@ impl FromStr for Bloom {
         Self::try_from(error::decode_hex(s)?.as_slice())
     }
 }
-impl BitOrAssign<&Bloom> for Bloom {                                                                                  
-    fn bitor_assign(&mut self, rhs: &Bloom) {                                                                                       
-        for (a, b) in self.0.iter_mut().zip(rhs.0.iter()) {                                                                         
-            *a |= *b;                                                                                                               
-        }                                                                                                                           
-    }                                                     
+impl BitOrAssign<&Bloom> for Bloom {
+    fn bitor_assign(&mut self, rhs: &Bloom) {
+        for (a, b) in self.0.iter_mut().zip(rhs.0.iter()) {
+            *a |= *b;
+        }
+    }
 }
 
 impl Bloom {

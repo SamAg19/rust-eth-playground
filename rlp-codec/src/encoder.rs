@@ -28,18 +28,21 @@ pub fn encode(item: &RlpItem, buffer: &mut BytesMut) -> Result<(), RlpError> {
                 encode(item, &mut encoded_items)?;
             }
 
-            if encoded_items.len() <= 55 {
-                buffer.put_u8(0xc0 + encoded_items.len() as u8);
-            } else {
-                let length_bytes = encode_length(encoded_items.len());
-                buffer.put_u8(0xf7 + length_bytes.len() as u8);
-                buffer.put_slice(&length_bytes);
-            }
+            add_rlp_list_prefix(buffer, encoded_items.len());
 
             buffer.put_slice(&encoded_items);
-
             Ok(())
         }
+    }
+}
+
+pub fn add_rlp_list_prefix(buffer: &mut BytesMut, encoded_items_len: usize) {
+    if encoded_items_len <= 55 {
+        buffer.put_u8(0xc0 + encoded_items_len as u8);
+    } else {
+        let length_bytes = encode_length(encoded_items_len);
+        buffer.put_u8(0xf7 + length_bytes.len() as u8);
+        buffer.put_slice(&length_bytes);
     }
 }
 

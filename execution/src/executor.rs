@@ -1,4 +1,4 @@
-use types::{Address, Bloom, Transaction};
+use types::{Address, B256, Bloom, Transaction};
 
 use crate::{
     error::ExecutionError,
@@ -7,16 +7,43 @@ use crate::{
     providers::StateProvider,
 };
 
+use bytes::BytesMut;
+use rlp_codec::{
+    RlpEncodable, RlpItem, encode,
+    trie::{MerkleTrie, TrieError},
+};
+
+pub fn compute_state_root(provider: &InMemoryProvider) -> Result<B256, TrieError> {
+    // B256::zero() is a placeholder storage root because storage tries are out of scope.
+    let storage_root = B256::zero();
+
+    let mut state_trie = MerkleTrie::new();
+    for (address, info) in provider.state.iter() {
+        let account_rlp = RlpItem::List(vec![
+            info.nonce.to_rlp_item(),
+            info.balance.to_rlp_item(),
+            storage_root.to_rlp_item(),
+            info.code_hash.to_rlp_item(),
+        ]);
+        let mut buffer = BytesMut::new();
+        encode(&account_rlp, &mut buffer)?;
+        let bytes = buffer.freeze();
+        state_trie.insert(address.as_bytes(), bytes.to_vec())?;
+    }
+    state_trie.root_hash()
+}
+
 #[derive(Debug)]
 pub struct ExecutionOutput {
     pub gas_used: u64,
     pub receipts: Vec<Receipt>,
     pub logs_bloom: Bloom,
+    pub state_root: B256,
 }
 
 pub struct BlockWithSenders {
     pub block: Block,
-    pub senders: Vec<Address>
+    pub senders: Vec<Address>,
 }
 
 pub trait BlockExecutor {
@@ -40,7 +67,13 @@ impl BlockExecutor for ValueTransferExecutor {
         let mut cumulative_gas_used: u64 = 0;
         let mut receipts = vec![];
         let mut logs_bloom: Bloom = Bloom::zero();
-        for (i, (signed_tx,sender) ) in block_with_senders.block.transactions.iter().zip(block_with_senders.senders.iter()).enumerate() {
+        for (i, (signed_tx, sender)) in block_with_senders
+            .block
+            .transactions
+            .iter()
+            .zip(block_with_senders.senders.iter())
+            .enumerate()
+        {
             let mut account = state.get_account(*sender)?;
             let sender_nonce = account.nonce;
             match &signed_tx.transaction {
@@ -148,6 +181,7 @@ impl BlockExecutor for ValueTransferExecutor {
             gas_used: cumulative_gas_used,
             receipts,
             logs_bloom,
+            state_root: compute_state_root(state)?,
         })
     }
 }

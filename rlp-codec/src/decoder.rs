@@ -1,39 +1,54 @@
-use crate::item::RlpItem;
 use crate::error::RlpError;
+use crate::item::RlpItem;
 use bytes::Bytes;
 
 pub fn decode(input: &[u8]) -> Result<(RlpItem, &[u8]), RlpError> {
     if input.is_empty() {
-        return Err(RlpError::InputTooShort { expected: 1, actual: 0 });
+        return Err(RlpError::InputTooShort {
+            expected: 1,
+            actual: 0,
+        });
     }
 
     if input[0] < 0x80 {
         Ok((RlpItem::Bytes(Bytes::from(vec![input[0]])), &input[1..]))
-    }
-    else if input[0] < 0xb8 {
+    } else if input[0] < 0xb8 {
         let len = (input[0] - 0x80) as usize;
         if len > input[1..].len() {
-            return Err(RlpError::InputTooShort { expected: len, actual: input.len() - 1});
+            return Err(RlpError::InputTooShort {
+                expected: len,
+                actual: input.len() - 1,
+            });
         }
 
-        Ok((RlpItem::Bytes(Bytes::copy_from_slice(&input[1..1+len])), &input[1+len..]))
-    }
-    else if input[0] < 0xc0 {
+        Ok((
+            RlpItem::Bytes(Bytes::copy_from_slice(&input[1..1 + len])),
+            &input[1 + len..],
+        ))
+    } else if input[0] < 0xc0 {
         let len_of_len = (input[0] - 0xb7) as usize;
         let payload_len = decode_length(&input[1..], len_of_len)?;
         let remaining_after_len = &input[1 + len_of_len..];
         if payload_len > remaining_after_len.len() {
-            return Err(RlpError::InputTooShort { expected: payload_len, actual: remaining_after_len.len() });
+            return Err(RlpError::InputTooShort {
+                expected: payload_len,
+                actual: remaining_after_len.len(),
+            });
         }
 
-        Ok((RlpItem::Bytes(Bytes::copy_from_slice(&remaining_after_len[..payload_len])), &remaining_after_len[payload_len..]))        
-    }
-    else if input[0] < 0xf8 {
+        Ok((
+            RlpItem::Bytes(Bytes::copy_from_slice(&remaining_after_len[..payload_len])),
+            &remaining_after_len[payload_len..],
+        ))
+    } else if input[0] < 0xf8 {
         let payload_len = (input[0] - 0xc0) as usize;
         if payload_len > input.len() - 1 {
-            return Err(RlpError::InputTooShort { expected: payload_len, actual: input.len() - 1});
+            return Err(RlpError::InputTooShort {
+                expected: payload_len,
+                actual: input.len() - 1,
+            });
         }
-        let mut payload_slice = &input[1..payload_len+1];
+        let mut payload_slice = &input[1..payload_len + 1];
 
         let mut decoded: Vec<RlpItem> = vec![];
 
@@ -43,17 +58,18 @@ pub fn decode(input: &[u8]) -> Result<(RlpItem, &[u8]), RlpError> {
             payload_slice = remaining;
         }
 
-        Ok((RlpItem::List(decoded), &input[1+payload_len..]))
-        
-    }
-    else {
+        Ok((RlpItem::List(decoded), &input[1 + payload_len..]))
+    } else {
         let len_of_len = (input[0] - 0xf7) as usize;
         let payload_len = decode_length(&input[1..], len_of_len)?;
         let remaining_after_len = &input[1 + len_of_len..];
         if payload_len > remaining_after_len.len() {
-            return Err(RlpError::InputTooShort { expected: payload_len, actual: remaining_after_len.len()});
+            return Err(RlpError::InputTooShort {
+                expected: payload_len,
+                actual: remaining_after_len.len(),
+            });
         }
-        let mut payload_slice = &remaining_after_len[..payload_len]; 
+        let mut payload_slice = &remaining_after_len[..payload_len];
 
         let mut decoded: Vec<RlpItem> = vec![];
 
@@ -73,11 +89,14 @@ fn decode_length(slice: &[u8], len_of_len: usize) -> Result<usize, RlpError> {
     }
 
     if len_of_len > slice.len() {
-        return Err(RlpError::InputTooShort { expected: len_of_len, actual: slice.len() });
+        return Err(RlpError::InputTooShort {
+            expected: len_of_len,
+            actual: slice.len(),
+        });
     }
 
     let mut arr: [u8; 8] = [0x00; 8];
-    arr[8-len_of_len..].copy_from_slice(&slice[..len_of_len]); 
+    arr[8 - len_of_len..].copy_from_slice(&slice[..len_of_len]);
 
     Ok(usize::from_be_bytes(arr))
 }
@@ -113,7 +132,7 @@ mod tests {
         let input_empty = [0x80];
         let input_dog = [0x83, 0x64, 0x6f, 0x67];
         let input_80 = [0x81, 0x80];
-        let input_err  = [0x82, 0x01];
+        let input_err = [0x82, 0x01];
 
         let (item_empty, rem_empty) = decode(&input_empty).unwrap();
         assert_eq!(item_empty, RlpItem::Bytes(Bytes::from(vec![])));
@@ -128,11 +147,17 @@ mod tests {
         assert_eq!(rem_80.len(), 0);
 
         let err = decode(&input_err).unwrap_err();
-        assert!(matches!(err, RlpError::InputTooShort{ expected: 2, actual: 1}));
+        assert!(matches!(
+            err,
+            RlpError::InputTooShort {
+                expected: 2,
+                actual: 1
+            }
+        ));
 
-        let input = [0x81, 0xAA, 0xBB];         
-        let (item, rem) = decode(&input).unwrap();                                                                                          
-        assert_eq!(item, RlpItem::Bytes(Bytes::from(vec![0xAA])));                                                                          
+        let input = [0x81, 0xAA, 0xBB];
+        let (item, rem) = decode(&input).unwrap();
+        assert_eq!(item, RlpItem::Bytes(Bytes::from(vec![0xAA])));
         assert_eq!(rem, &[0xBB]);
     }
 
@@ -156,10 +181,16 @@ mod tests {
         assert_eq!(rem_1024.len(), 0);
 
         let input_too_short_err = decode(&input_err).unwrap_err();
-        assert!(matches!(input_too_short_err, RlpError::InputTooShort{ expected: 56, actual: 50}));
+        assert!(matches!(
+            input_too_short_err,
+            RlpError::InputTooShort {
+                expected: 56,
+                actual: 50
+            }
+        ));
 
-        let invalid_length = decode_length(&[0x01, 0x02], 0).unwrap_err();                                                                  
-        assert!(matches!(invalid_length, RlpError::InvalidLength(0)));  
+        let invalid_length = decode_length(&[0x01, 0x02], 0).unwrap_err();
+        assert!(matches!(invalid_length, RlpError::InvalidLength(0)));
     }
 
     #[test]
@@ -173,12 +204,19 @@ mod tests {
         assert_eq!(item_empty_list, RlpItem::List(vec![]));
         assert_eq!(rem_empty_list.len(), 0);
 
-        let (item_list_empty_bytes, rem_list_empty_bytes) = decode(&input_list_empty_bytes).unwrap();
-        assert_eq!(item_list_empty_bytes, RlpItem::List(vec![RlpItem::Bytes(Bytes::from(vec![]))]));
+        let (item_list_empty_bytes, rem_list_empty_bytes) =
+            decode(&input_list_empty_bytes).unwrap();
+        assert_eq!(
+            item_list_empty_bytes,
+            RlpItem::List(vec![RlpItem::Bytes(Bytes::from(vec![]))])
+        );
         assert_eq!(rem_list_empty_bytes.len(), 0);
 
         let (item_list_empty_list, rem_list_empty_list) = decode(&input_list_empty_list).unwrap();
-        assert_eq!(item_list_empty_list, RlpItem::List(vec![RlpItem::List(vec![])]));
+        assert_eq!(
+            item_list_empty_list,
+            RlpItem::List(vec![RlpItem::List(vec![])])
+        );
         assert_eq!(rem_list_empty_list.len(), 0);
 
         let (item_list_animals, rem_list_animals) = decode(&input_list_animals).unwrap();
@@ -193,118 +231,118 @@ mod tests {
     #[test]
     fn test_decode_long_list() {
         let input_mixed_list = [
-                0xf8,
-                0x6d, // long-list prefix, payload is 109 bytes
-                0x83,
-                0x63,
-                0x61,
-                0x74, // "cat"
-                0xb7 + 1,
-                0x59, // length prefix for long string (89 bytes)
-                0x54,
-                0x68,
-                0x69,
-                0x73,
-                0x20,
-                0x69,
-                0x73,
-                0x20,
-                0x61,
-                0x20,
-                0x6c,
-                0x6f,
-                0x6e,
-                0x67,
-                0x65,
-                0x72,
-                0x20,
-                0x73,
-                0x74,
-                0x72,
-                0x69,
-                0x6e,
-                0x67,
-                0x20,
-                0x74,
-                0x68,
-                0x61,
-                0x74,
-                0x20,
-                0x65,
-                0x78,
-                0x63,
-                0x65,
-                0x65,
-                0x64,
-                0x73,
-                0x20,
-                0x35,
-                0x35,
-                0x20,
-                0x62,
-                0x79,
-                0x74,
-                0x65,
-                0x73,
-                0x20,
-                0x61,
-                0x6e,
-                0x64,
-                0x20,
-                0x73,
-                0x68,
-                0x6f,
-                0x75,
-                0x6c,
-                0x64,
-                0x20,
-                0x62,
-                0x65,
-                0x20,
-                0x65,
-                0x6e,
-                0x63,
-                0x6f,
-                0x64,
-                0x65,
-                0x64,
-                0x20,
-                0x77,
-                0x69,
-                0x74,
-                0x68,
-                0x20,
-                0x61,
-                0x20,
-                0x6c,
-                0x65,
-                0x6e,
-                0x67,
-                0x74,
-                0x68,
-                0x20,
-                0x70,
-                0x72,
-                0x65,
-                0x66,
-                0x69,
-                0x78,
-                0x2e,
-                0xc9, // inner list prefix (payload is 9 bytes)
-                0x83,
-                0x64,
-                0x6f,
-                0x67, // "dog"
-                0x84,
-                0x66,
-                0x69,
-                0x73,
-                0x68, // "fish"
-                0x83,
-                0x63,
-                0x6f,
-                0x77 // "cow"
-            ];
+            0xf8,
+            0x6d, // long-list prefix, payload is 109 bytes
+            0x83,
+            0x63,
+            0x61,
+            0x74, // "cat"
+            0xb7 + 1,
+            0x59, // length prefix for long string (89 bytes)
+            0x54,
+            0x68,
+            0x69,
+            0x73,
+            0x20,
+            0x69,
+            0x73,
+            0x20,
+            0x61,
+            0x20,
+            0x6c,
+            0x6f,
+            0x6e,
+            0x67,
+            0x65,
+            0x72,
+            0x20,
+            0x73,
+            0x74,
+            0x72,
+            0x69,
+            0x6e,
+            0x67,
+            0x20,
+            0x74,
+            0x68,
+            0x61,
+            0x74,
+            0x20,
+            0x65,
+            0x78,
+            0x63,
+            0x65,
+            0x65,
+            0x64,
+            0x73,
+            0x20,
+            0x35,
+            0x35,
+            0x20,
+            0x62,
+            0x79,
+            0x74,
+            0x65,
+            0x73,
+            0x20,
+            0x61,
+            0x6e,
+            0x64,
+            0x20,
+            0x73,
+            0x68,
+            0x6f,
+            0x75,
+            0x6c,
+            0x64,
+            0x20,
+            0x62,
+            0x65,
+            0x20,
+            0x65,
+            0x6e,
+            0x63,
+            0x6f,
+            0x64,
+            0x65,
+            0x64,
+            0x20,
+            0x77,
+            0x69,
+            0x74,
+            0x68,
+            0x20,
+            0x61,
+            0x20,
+            0x6c,
+            0x65,
+            0x6e,
+            0x67,
+            0x74,
+            0x68,
+            0x20,
+            0x70,
+            0x72,
+            0x65,
+            0x66,
+            0x69,
+            0x78,
+            0x2e,
+            0xc9, // inner list prefix (payload is 9 bytes)
+            0x83,
+            0x64,
+            0x6f,
+            0x67, // "dog"
+            0x84,
+            0x66,
+            0x69,
+            0x73,
+            0x68, // "fish"
+            0x83,
+            0x63,
+            0x6f,
+            0x77, // "cow"
+        ];
 
         let (item_mixed_list, rem_mixed_list) = decode(&input_mixed_list).unwrap();
         let item_mixed = RlpItem::List(vec![
@@ -322,15 +360,16 @@ mod tests {
         assert_eq!(rem_mixed_list.len(), 0);
 
         let input_nested = [
-                0xd2, 0xd1, 0xd0, 0xcf, 0xce, 0x8d, 0x64, 0x65, 0x65, 0x70, 0x6c, 0x79, 0x20, 0x6e,
-                0x65, 0x73, 0x74, 0x65, 0x64, 0x01
-            ];
+            0xd2, 0xd1, 0xd0, 0xcf, 0xce, 0x8d, 0x64, 0x65, 0x65, 0x70, 0x6c, 0x79, 0x20, 0x6e,
+            0x65, 0x73, 0x74, 0x65, 0x64, 0x01,
+        ];
         let (item_nested, rem_nested) = decode(&input_nested).unwrap();
-        let expected_item_deeply_nested = RlpItem::List(vec![RlpItem::List(vec![RlpItem::List(vec![
-            RlpItem::List(vec![RlpItem::List(vec![RlpItem::Bytes(Bytes::from(
-                "deeply nested",
-            ))])]),
-        ])])]);
+        let expected_item_deeply_nested =
+            RlpItem::List(vec![RlpItem::List(vec![RlpItem::List(vec![
+                RlpItem::List(vec![RlpItem::List(vec![RlpItem::Bytes(Bytes::from(
+                    "deeply nested",
+                ))])]),
+            ])])]);
         assert_eq!(item_nested, expected_item_deeply_nested);
         assert_eq!(rem_nested.len(), 1);
     }

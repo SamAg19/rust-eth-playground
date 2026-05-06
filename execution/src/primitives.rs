@@ -1,5 +1,5 @@
-use types::{Address, B256, Bloom};
 use rlp_codec::signing::SignedTransaction;
+use types::{Address, B256, Bloom};
 
 pub type BlockNumber = u64;
 

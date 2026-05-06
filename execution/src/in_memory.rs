@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use types::{Address, B256};
 use rlp_codec::signing::SignedTransaction;
+use types::{Address, B256};
 
 use crate::{
     error::ExecutionError,
@@ -26,7 +26,10 @@ impl InMemoryProvider {
         self.blocks_by_hash
             .insert(block.header.hash, block.header.block_number);
         for signed_tx in &block.transactions {
-            self.transactions.insert(signed_tx.hash()?, (signed_tx.clone(), block.header.block_number));
+            self.transactions.insert(
+                signed_tx.hash()?,
+                (signed_tx.clone(), block.header.block_number),
+            );
         }
         self.blocks.insert(block.header.block_number, block);
         Ok(())

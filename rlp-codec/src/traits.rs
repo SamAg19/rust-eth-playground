@@ -71,17 +71,19 @@
 //     the expand for these types) do the same per the RLP spec.
 // =============================================================================
 
-use crate::item::RlpItem;
 use crate::error::RlpError;
-use types::{Address, B256, AccessListItem, Transaction};
+use crate::item::RlpItem;
 use bytes::Bytes;
+use types::{AccessListItem, Address, B256, Transaction};
 
 pub trait RlpEncodable {
     fn to_rlp_item(&self) -> RlpItem;
 }
 
 pub trait RlpDecodable {
-    fn from_rlp_item(item: &RlpItem) -> Result<Self, RlpError> where Self: Sized;
+    fn from_rlp_item(item: &RlpItem) -> Result<Self, RlpError>
+    where
+        Self: Sized;
 }
 
 impl RlpEncodable for u64 {
@@ -93,7 +95,10 @@ impl RlpEncodable for u64 {
 }
 
 impl RlpDecodable for u64 {
-    fn from_rlp_item(item: &RlpItem) -> Result<Self, RlpError> where Self: Sized {
+    fn from_rlp_item(item: &RlpItem) -> Result<Self, RlpError>
+    where
+        Self: Sized,
+    {
         match item {
             RlpItem::Bytes(x) => {
                 if x.len() > 8 {
@@ -102,8 +107,8 @@ impl RlpDecodable for u64 {
                 let mut arr: [u8; 8] = [0x00; 8];
                 arr[8 - x.len()..].copy_from_slice(x);
                 Ok(u64::from_be_bytes(arr))
-            },
-            RlpItem::List(_) => Err(RlpError::UnexpectedType(0xc0))
+            }
+            RlpItem::List(_) => Err(RlpError::UnexpectedType(0xc0)),
         }
     }
 }
@@ -117,7 +122,10 @@ impl RlpEncodable for u128 {
 }
 
 impl RlpDecodable for u128 {
-    fn from_rlp_item(item: &RlpItem) -> Result<Self, RlpError> where Self: Sized {
+    fn from_rlp_item(item: &RlpItem) -> Result<Self, RlpError>
+    where
+        Self: Sized,
+    {
         match item {
             RlpItem::Bytes(x) => {
                 if x.len() > 16 {
@@ -126,8 +134,8 @@ impl RlpDecodable for u128 {
                 let mut arr: [u8; 16] = [0x00; 16];
                 arr[16 - x.len()..].copy_from_slice(x);
                 Ok(u128::from_be_bytes(arr))
-            },
-            RlpItem::List(_) => Err(RlpError::UnexpectedType(0xc0))
+            }
+            RlpItem::List(_) => Err(RlpError::UnexpectedType(0xc0)),
         }
     }
 }
@@ -136,13 +144,16 @@ impl RlpEncodable for bool {
     fn to_rlp_item(&self) -> RlpItem {
         match self {
             false => RlpItem::Bytes(Bytes::from(vec![0x00])),
-            true => RlpItem::Bytes(Bytes::from(vec![0x01]))
+            true => RlpItem::Bytes(Bytes::from(vec![0x01])),
         }
     }
 }
 
 impl RlpDecodable for bool {
-    fn from_rlp_item(item: &RlpItem) -> Result<Self, RlpError> where Self: Sized {
+    fn from_rlp_item(item: &RlpItem) -> Result<Self, RlpError>
+    where
+        Self: Sized,
+    {
         match item {
             RlpItem::Bytes(x) => {
                 if x.len() > 1 || x.is_empty() {
@@ -151,10 +162,10 @@ impl RlpDecodable for bool {
                 match x[0] {
                     0x00 => Ok(false),
                     0x01 => Ok(true),
-                    _ => Err(RlpError::UnexpectedType(x[0]))
+                    _ => Err(RlpError::UnexpectedType(x[0])),
                 }
-            },
-            RlpItem::List(_) => Err(RlpError::UnexpectedType(0xc0))
+            }
+            RlpItem::List(_) => Err(RlpError::UnexpectedType(0xc0)),
         }
     }
 }
@@ -166,12 +177,13 @@ impl RlpEncodable for Vec<u8> {
 }
 
 impl RlpDecodable for Vec<u8> {
-    fn from_rlp_item(item: &RlpItem) -> Result<Self, RlpError> where Self: Sized {
+    fn from_rlp_item(item: &RlpItem) -> Result<Self, RlpError>
+    where
+        Self: Sized,
+    {
         match item {
-            RlpItem::Bytes(x) => {
-                Ok(x.to_vec())
-            },
-            RlpItem::List(_) => Err(RlpError::UnexpectedType(0xc0))
+            RlpItem::Bytes(x) => Ok(x.to_vec()),
+            RlpItem::List(_) => Err(RlpError::UnexpectedType(0xc0)),
         }
     }
 }
@@ -183,13 +195,17 @@ impl RlpEncodable for Address {
 }
 
 impl RlpDecodable for Address {
-    fn from_rlp_item(item: &RlpItem) -> Result<Self, RlpError> where Self: Sized {
-         match item {
+    fn from_rlp_item(item: &RlpItem) -> Result<Self, RlpError>
+    where
+        Self: Sized,
+    {
+        match item {
             RlpItem::Bytes(x) => {
-                let arr = Address::try_from(&x[..]).map_err(|_| RlpError::InvalidLength(x.len()))?;
+                let arr =
+                    Address::try_from(&x[..]).map_err(|_| RlpError::InvalidLength(x.len()))?;
                 Ok(arr)
-            },
-            RlpItem::List(_) => Err(RlpError::UnexpectedType(0xc0))
+            }
+            RlpItem::List(_) => Err(RlpError::UnexpectedType(0xc0)),
         }
     }
 }
@@ -201,13 +217,16 @@ impl RlpEncodable for B256 {
 }
 
 impl RlpDecodable for B256 {
-    fn from_rlp_item(item: &RlpItem) -> Result<Self, RlpError> where Self: Sized {
-         match item {
+    fn from_rlp_item(item: &RlpItem) -> Result<Self, RlpError>
+    where
+        Self: Sized,
+    {
+        match item {
             RlpItem::Bytes(x) => {
                 let arr = B256::try_from(&x[..]).map_err(|_| RlpError::InvalidLength(x.len()))?;
                 Ok(arr)
-            },
-            RlpItem::List(_) => Err(RlpError::UnexpectedType(0xc0))
+            }
+            RlpItem::List(_) => Err(RlpError::UnexpectedType(0xc0)),
         }
     }
 }
@@ -216,7 +235,11 @@ impl RlpEncodable for AccessListItem {
     fn to_rlp_item(&self) -> RlpItem {
         let mut list: Vec<RlpItem> = vec![];
         list.push(self.address.to_rlp_item());
-        let item_list: Vec<RlpItem> = self.storage_keys.iter().map(|sk| sk.to_rlp_item()).collect();
+        let item_list: Vec<RlpItem> = self
+            .storage_keys
+            .iter()
+            .map(|sk| sk.to_rlp_item())
+            .collect();
         list.push(RlpItem::List(item_list));
 
         RlpItem::List(list)
@@ -224,7 +247,10 @@ impl RlpEncodable for AccessListItem {
 }
 
 impl RlpDecodable for AccessListItem {
-    fn from_rlp_item(item: &RlpItem) -> Result<Self, RlpError> where Self: Sized {
+    fn from_rlp_item(item: &RlpItem) -> Result<Self, RlpError>
+    where
+        Self: Sized,
+    {
         match item {
             RlpItem::Bytes(_) => Err(RlpError::UnexpectedType(0x80)),
             RlpItem::List(x) => {
@@ -244,11 +270,13 @@ impl RlpDecodable for AccessListItem {
                     }
                 };
 
-                Ok(Self { address, storage_keys })
+                Ok(Self {
+                    address,
+                    storage_keys,
+                })
             }
         }
     }
-
 }
 
 // Legacy: tag, nonce, gas_limit, to, value, data, gas_price
@@ -258,52 +286,86 @@ impl RlpEncodable for Transaction {
     fn to_rlp_item(&self) -> RlpItem {
         let mut fields = vec![];
         match self {
-            Transaction::Legacy { nonce, gas_price, gas_limit, to, value, data } => {
+            Transaction::Legacy {
+                nonce,
+                gas_price,
+                gas_limit,
+                to,
+                value,
+                data,
+            } => {
                 fields.push(0u64.to_rlp_item());
                 fields.push(nonce.to_rlp_item());
                 fields.push(gas_limit.to_rlp_item());
                 let to_item = match to {
-                    Some(x) => x.to_rlp_item() ,
-                    None => RlpItem::Bytes(Bytes::from(vec![]))
+                    Some(x) => x.to_rlp_item(),
+                    None => RlpItem::Bytes(Bytes::from(vec![])),
                 };
                 fields.push(to_item);
                 fields.push(value.to_rlp_item());
                 fields.push(data.to_rlp_item());
                 fields.push(gas_price.to_rlp_item());
-            },
-            Transaction::Eip1559 { nonce, max_priority_fee_per_gas, max_fee_per_gas, gas_limit, to, value, data, access_list } => {
+            }
+            Transaction::Eip1559 {
+                nonce,
+                max_priority_fee_per_gas,
+                max_fee_per_gas,
+                gas_limit,
+                to,
+                value,
+                data,
+                access_list,
+            } => {
                 fields.push(2u64.to_rlp_item());
                 fields.push(nonce.to_rlp_item());
                 fields.push(gas_limit.to_rlp_item());
                 let to_item = match to {
                     Some(x) => x.to_rlp_item(),
-                    None => RlpItem::Bytes(Bytes::from(vec![]))
+                    None => RlpItem::Bytes(Bytes::from(vec![])),
                 };
                 fields.push(to_item);
                 fields.push(value.to_rlp_item());
                 fields.push(data.to_rlp_item());
                 fields.push(max_fee_per_gas.to_rlp_item());
                 fields.push(max_priority_fee_per_gas.to_rlp_item());
-                let access_list_item: Vec<RlpItem> = access_list.iter().map(|a| a.to_rlp_item()).collect();
+                let access_list_item: Vec<RlpItem> =
+                    access_list.iter().map(|a| a.to_rlp_item()).collect();
                 fields.push(RlpItem::List(access_list_item));
-            },
-            Transaction::Eip4844 { nonce, max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas, gas_limit, to, value, data, access_list, blob_versioned_hashes } => {
+            }
+            Transaction::Eip4844 {
+                nonce,
+                max_priority_fee_per_gas,
+                max_fee_per_gas,
+                max_fee_per_blob_gas,
+                gas_limit,
+                to,
+                value,
+                data,
+                access_list,
+                blob_versioned_hashes,
+            } => {
                 fields.push(3u64.to_rlp_item());
                 fields.push(nonce.to_rlp_item());
                 fields.push(gas_limit.to_rlp_item());
                 let to_item = match to {
-                    Some(x) => x.to_rlp_item() ,
-                    None => RlpItem::Bytes(Bytes::from(vec![]))
+                    Some(x) => x.to_rlp_item(),
+                    None => RlpItem::Bytes(Bytes::from(vec![])),
                 };
                 fields.push(to_item);
                 fields.push(value.to_rlp_item());
                 fields.push(data.to_rlp_item());
                 fields.push(max_fee_per_gas.to_rlp_item());
                 fields.push(max_priority_fee_per_gas.to_rlp_item());
-                let access_list_item: Vec<RlpItem> = access_list.iter().map(|a| a.to_rlp_item()).collect();
+                let access_list_item: Vec<RlpItem> =
+                    access_list.iter().map(|a| a.to_rlp_item()).collect();
                 fields.push(RlpItem::List(access_list_item));
                 fields.push(max_fee_per_blob_gas.to_rlp_item());
-                fields.push(RlpItem::List(blob_versioned_hashes.iter().map(|sk| sk.to_rlp_item()).collect()));
+                fields.push(RlpItem::List(
+                    blob_versioned_hashes
+                        .iter()
+                        .map(|sk| sk.to_rlp_item())
+                        .collect(),
+                ));
             }
         }
 
@@ -335,7 +397,10 @@ fn decode_list_of<T: RlpDecodable>(item: &RlpItem) -> Result<Vec<T>, RlpError> {
 // EIP-1559: tag, nonce, gas_limit, to, value, data, max_fee_per_gas, max_priority_fee_per_gas, access_list
 // EIP-4844: EIP-1559 fields + max_fee_per_blob_gas, blob_versioned_hashes
 impl RlpDecodable for Transaction {
-    fn from_rlp_item(item: &RlpItem) -> Result<Self, RlpError> where Self: Sized {
+    fn from_rlp_item(item: &RlpItem) -> Result<Self, RlpError>
+    where
+        Self: Sized,
+    {
         let x = match item {
             RlpItem::Bytes(_) => return Err(RlpError::UnexpectedType(0x80)),
             RlpItem::List(x) => x,

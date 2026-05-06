@@ -25,7 +25,9 @@ impl<E: BlockExecutor, V: ConsensusValidator> Pipeline<E, V> {
         &mut self,
         block_with_senders: &BlockWithSenders,
     ) -> Result<E::Output, ExecutionError> {
-        let parent_header = self.provider.get_header_by_hash(block_with_senders.block.header.parent_hash)?;
+        let parent_header = self
+            .provider
+            .get_header_by_hash(block_with_senders.block.header.parent_hash)?;
         self.validator
             .validate_header(&block_with_senders.block.header, &parent_header)?;
         self.validator.validate_body(&block_with_senders.block)?;
@@ -50,6 +52,10 @@ mod tests {
 
     fn recipient_addr() -> Address {
         Address::new([0x22; 20])
+    }
+
+    fn second_recipient_addr() -> Address {
+        Address::new([0x33; 20])
     }
 
     fn parent_header() -> Header {
@@ -82,7 +88,11 @@ mod tests {
         }
     }
 
-    fn make_signed_tx(nonce: u64, value: u128, gas_limit: u64) -> rlp_codec::signing::SignedTransaction {
+    fn make_signed_tx(
+        nonce: u64,
+        value: u128,
+        gas_limit: u64,
+    ) -> rlp_codec::signing::SignedTransaction {
         signed_legacy_tx(nonce, value, gas_limit, BASE_FEE, Some(recipient_addr()))
     }
 
@@ -119,10 +129,7 @@ mod tests {
         let mut pipeline = setup_basic();
         let signed = make_signed_tx(0, 1_000_000, 21_000);
         let expected_hash = signed.hash().unwrap();
-        let bws = block_with_senders(
-            child_header(1, parent_header().hash, 21_000),
-            vec![signed],
-        );
+        let bws = block_with_senders(child_header(1, parent_header().hash, 21_000), vec![signed]);
 
         let output = pipeline.execute(&bws).unwrap();
 
@@ -199,10 +206,7 @@ mod tests {
         let mut pipeline = setup_basic();
         let huge_value = INITIAL_SENDER_BALANCE; // leaves no room for gas
         let signed = make_signed_tx(0, huge_value, 21_000);
-        let bws = block_with_senders(
-            child_header(1, parent_header().hash, 21_000),
-            vec![signed],
-        );
+        let bws = block_with_senders(child_header(1, parent_header().hash, 21_000), vec![signed]);
 
         let err = pipeline.execute(&bws).unwrap_err();
         assert!(matches!(err, ExecutionError::InsufficientBalance { .. }));
@@ -212,10 +216,7 @@ mod tests {
     fn wrong_nonce_fails_execution() {
         let mut pipeline = setup_basic();
         let signed = make_signed_tx(5, 1_000_000, 21_000); // account nonce is 0
-        let bws = block_with_senders(
-            child_header(1, parent_header().hash, 21_000),
-            vec![signed],
-        );
+        let bws = block_with_senders(child_header(1, parent_header().hash, 21_000), vec![signed]);
 
         let err = pipeline.execute(&bws).unwrap_err();
         assert!(matches!(err, ExecutionError::InvalidNonce { .. }));
@@ -255,6 +256,36 @@ mod tests {
                 .balance,
             expected_recipient_balance,
         );
+    }
+
+    #[test]
+    fn repeated_execution_from_same_state_produces_same_state_root() {
+        fn execute_once() -> B256 {
+            let mut pipeline = setup_basic();
+            fund(&mut pipeline.provider, recipient_addr(), 0, 0);
+            fund(&mut pipeline.provider, second_recipient_addr(), 0, 0);
+
+            let tx1 = make_signed_tx(0, 1_000_000, 21_000);
+            let tx2 = signed_legacy_tx(
+                1,
+                2_000_000,
+                21_000,
+                BASE_FEE,
+                Some(second_recipient_addr()),
+            );
+            let bws = block_with_senders(
+                child_header(1, parent_header().hash, 42_000),
+                vec![tx1, tx2],
+            );
+
+            pipeline.execute(&bws).unwrap().state_root
+        }
+
+        let first = execute_once();
+        let second = execute_once();
+
+        assert_eq!(first, second);
+        assert_ne!(first, B256::default());
     }
 
     // §9.5 — swapping the validator without touching Pipeline code.

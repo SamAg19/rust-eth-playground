@@ -1,9 +1,9 @@
-use crate::encoder::encode;
 use crate::decoder::decode;
+use crate::encoder::encode;
 use crate::error::RlpError;
 use crate::item::RlpItem;
-use bytes::{BytesMut, Bytes};
 use crate::traits::{RlpDecodable, RlpEncodable};
+use bytes::{Bytes, BytesMut};
 use types::{AccessListItem, Address, B256, Transaction};
 
 fn rlp_roundtrip(item: &RlpItem) -> Result<RlpItem, RlpError> {
@@ -24,23 +24,56 @@ mod tests {
 
     #[test]
     fn test_roundtrip() {
-        assert_eq!(rlp_roundtrip(&RlpItem::Bytes(Bytes::from(vec![]))).unwrap(), RlpItem::Bytes(Bytes::from(vec![])));
-        assert_eq!(rlp_roundtrip(&RlpItem::Bytes(Bytes::from(vec![0x00]))).unwrap(), RlpItem::Bytes(Bytes::from(vec![0x00])));
-        assert_eq!(rlp_roundtrip(&RlpItem::Bytes(Bytes::from(vec![0x7f]))).unwrap(), RlpItem::Bytes(Bytes::from(vec![0x7f])));
-        assert_eq!(rlp_roundtrip(&RlpItem::Bytes(Bytes::from(vec![0x80]))).unwrap(), RlpItem::Bytes(Bytes::from(vec![0x80])));
-        assert_eq!(rlp_roundtrip(&RlpItem::Bytes(Bytes::from(vec![0xff]))).unwrap(), RlpItem::Bytes(Bytes::from(vec![0xff])));
-        assert_eq!(rlp_roundtrip(&RlpItem::Bytes(Bytes::from(vec![0x00; 55]))).unwrap(), RlpItem::Bytes(Bytes::from(vec![0x00; 55])));
-        assert_eq!(rlp_roundtrip(&RlpItem::Bytes(Bytes::from(vec![0x00; 56]))).unwrap(), RlpItem::Bytes(Bytes::from(vec![0x00; 56])));
-        
-        assert_eq!(rlp_roundtrip(&RlpItem::List(vec![])).unwrap(), RlpItem::List(vec![]));
-        assert_eq!(rlp_roundtrip(&RlpItem::List(vec![RlpItem::Bytes(Bytes::from(""))])).unwrap(), RlpItem::List(vec![RlpItem::Bytes(Bytes::from(""))]));
-        assert_eq!(rlp_roundtrip(&RlpItem::List(vec![RlpItem::List(vec![])])).unwrap(), RlpItem::List(vec![RlpItem::List(vec![])]));
+        assert_eq!(
+            rlp_roundtrip(&RlpItem::Bytes(Bytes::from(vec![]))).unwrap(),
+            RlpItem::Bytes(Bytes::from(vec![]))
+        );
+        assert_eq!(
+            rlp_roundtrip(&RlpItem::Bytes(Bytes::from(vec![0x00]))).unwrap(),
+            RlpItem::Bytes(Bytes::from(vec![0x00]))
+        );
+        assert_eq!(
+            rlp_roundtrip(&RlpItem::Bytes(Bytes::from(vec![0x7f]))).unwrap(),
+            RlpItem::Bytes(Bytes::from(vec![0x7f]))
+        );
+        assert_eq!(
+            rlp_roundtrip(&RlpItem::Bytes(Bytes::from(vec![0x80]))).unwrap(),
+            RlpItem::Bytes(Bytes::from(vec![0x80]))
+        );
+        assert_eq!(
+            rlp_roundtrip(&RlpItem::Bytes(Bytes::from(vec![0xff]))).unwrap(),
+            RlpItem::Bytes(Bytes::from(vec![0xff]))
+        );
+        assert_eq!(
+            rlp_roundtrip(&RlpItem::Bytes(Bytes::from(vec![0x00; 55]))).unwrap(),
+            RlpItem::Bytes(Bytes::from(vec![0x00; 55]))
+        );
+        assert_eq!(
+            rlp_roundtrip(&RlpItem::Bytes(Bytes::from(vec![0x00; 56]))).unwrap(),
+            RlpItem::Bytes(Bytes::from(vec![0x00; 56]))
+        );
+
+        assert_eq!(
+            rlp_roundtrip(&RlpItem::List(vec![])).unwrap(),
+            RlpItem::List(vec![])
+        );
+        assert_eq!(
+            rlp_roundtrip(&RlpItem::List(vec![RlpItem::Bytes(Bytes::from(""))])).unwrap(),
+            RlpItem::List(vec![RlpItem::Bytes(Bytes::from(""))])
+        );
+        assert_eq!(
+            rlp_roundtrip(&RlpItem::List(vec![RlpItem::List(vec![])])).unwrap(),
+            RlpItem::List(vec![RlpItem::List(vec![])])
+        );
 
         let item_deeply_nested = RlpItem::List(vec![RlpItem::List(vec![RlpItem::List(vec![
             RlpItem::List(vec![RlpItem::List(vec![RlpItem::List(vec![])])]),
         ])])]);
 
-        assert_eq!(rlp_roundtrip(&item_deeply_nested).unwrap(), item_deeply_nested);
+        assert_eq!(
+            rlp_roundtrip(&item_deeply_nested).unwrap(),
+            item_deeply_nested
+        );
 
         let item_mixed = RlpItem::List(vec![
             RlpItem::Bytes(Bytes::from("cat")),
@@ -60,19 +93,34 @@ mod tests {
     #[test]
     fn test_roundtrip_u64() {
         let zero = 0u64;
-        assert_eq!(u64::from_rlp_item(&rlp_roundtrip(&zero.to_rlp_item()).unwrap()).unwrap(), zero);
+        assert_eq!(
+            u64::from_rlp_item(&rlp_roundtrip(&zero.to_rlp_item()).unwrap()).unwrap(),
+            zero
+        );
 
         let one = 1u64;
-        assert_eq!(u64::from_rlp_item(&rlp_roundtrip(&one.to_rlp_item()).unwrap()).unwrap(), one);
+        assert_eq!(
+            u64::from_rlp_item(&rlp_roundtrip(&one.to_rlp_item()).unwrap()).unwrap(),
+            one
+        );
 
         let one_two_seven = 127u64;
-        assert_eq!(u64::from_rlp_item(&rlp_roundtrip(&one_two_seven.to_rlp_item()).unwrap()).unwrap(), one_two_seven);
+        assert_eq!(
+            u64::from_rlp_item(&rlp_roundtrip(&one_two_seven.to_rlp_item()).unwrap()).unwrap(),
+            one_two_seven
+        );
 
         let one_two_eight = 128u64;
-        assert_eq!(u64::from_rlp_item(&rlp_roundtrip(&one_two_eight.to_rlp_item()).unwrap()).unwrap(), one_two_eight);
+        assert_eq!(
+            u64::from_rlp_item(&rlp_roundtrip(&one_two_eight.to_rlp_item()).unwrap()).unwrap(),
+            one_two_eight
+        );
 
         let max = u64::MAX;
-        assert_eq!(u64::from_rlp_item(&rlp_roundtrip(&max.to_rlp_item()).unwrap()).unwrap(), max);
+        assert_eq!(
+            u64::from_rlp_item(&rlp_roundtrip(&max.to_rlp_item()).unwrap()).unwrap(),
+            max
+        );
 
         let max_u128 = u128::MAX;
         let err = u64::from_rlp_item(&rlp_roundtrip(&max_u128.to_rlp_item()).unwrap()).unwrap_err();
@@ -82,25 +130,43 @@ mod tests {
     #[test]
     fn test_roundtrip_u128() {
         let zero = 0u128;
-        assert_eq!(u128::from_rlp_item(&rlp_roundtrip(&zero.to_rlp_item()).unwrap()).unwrap(), zero);
+        assert_eq!(
+            u128::from_rlp_item(&rlp_roundtrip(&zero.to_rlp_item()).unwrap()).unwrap(),
+            zero
+        );
 
         let one = 1u128;
-        assert_eq!(u128::from_rlp_item(&rlp_roundtrip(&one.to_rlp_item()).unwrap()).unwrap(), one);
+        assert_eq!(
+            u128::from_rlp_item(&rlp_roundtrip(&one.to_rlp_item()).unwrap()).unwrap(),
+            one
+        );
 
         let one_two_seven = 127u128;
-        assert_eq!(u128::from_rlp_item(&rlp_roundtrip(&one_two_seven.to_rlp_item()).unwrap()).unwrap(), one_two_seven);
+        assert_eq!(
+            u128::from_rlp_item(&rlp_roundtrip(&one_two_seven.to_rlp_item()).unwrap()).unwrap(),
+            one_two_seven
+        );
 
         let max = u128::MAX;
-        assert_eq!(u128::from_rlp_item(&rlp_roundtrip(&max.to_rlp_item()).unwrap()).unwrap(), max);
+        assert_eq!(
+            u128::from_rlp_item(&rlp_roundtrip(&max.to_rlp_item()).unwrap()).unwrap(),
+            max
+        );
     }
 
     #[test]
     fn test_roundtrip_bool() {
         let f = false;
-        assert_eq!(bool::from_rlp_item(&rlp_roundtrip(&f.to_rlp_item()).unwrap()).unwrap(), f);
+        assert_eq!(
+            bool::from_rlp_item(&rlp_roundtrip(&f.to_rlp_item()).unwrap()).unwrap(),
+            f
+        );
 
         let t = true;
-        assert_eq!(bool::from_rlp_item(&rlp_roundtrip(&t.to_rlp_item()).unwrap()).unwrap(), t);
+        assert_eq!(
+            bool::from_rlp_item(&rlp_roundtrip(&t.to_rlp_item()).unwrap()).unwrap(),
+            t
+        );
 
         let max = u128::MAX;
         let err = bool::from_rlp_item(&rlp_roundtrip(&max.to_rlp_item()).unwrap()).unwrap_err();
@@ -110,10 +176,16 @@ mod tests {
     #[test]
     fn test_roundtrip_vecu8() {
         let v1: Vec<u8> = vec![123];
-        assert_eq!(Vec::from_rlp_item(&rlp_roundtrip(&v1.to_rlp_item()).unwrap()).unwrap(), v1);
+        assert_eq!(
+            Vec::from_rlp_item(&rlp_roundtrip(&v1.to_rlp_item()).unwrap()).unwrap(),
+            v1
+        );
 
         let v2: Vec<u8> = vec![123, 1, 2, 3, 10];
-        assert_eq!(Vec::from_rlp_item(&rlp_roundtrip(&v2.to_rlp_item()).unwrap()).unwrap(), v2);
+        assert_eq!(
+            Vec::from_rlp_item(&rlp_roundtrip(&v2.to_rlp_item()).unwrap()).unwrap(),
+            v2
+        );
 
         let err = Vec::from_rlp_item(&RlpItem::List(vec![])).unwrap_err();
         assert!(matches!(err, RlpError::UnexpectedType(0xc0)));
@@ -121,15 +193,26 @@ mod tests {
 
     #[test]
     fn test_roundtrip_address() {
-        let zero = Address::from([0x00;20]);
-        assert_eq!(Address::from_rlp_item(&rlp_roundtrip(&zero.to_rlp_item()).unwrap()).unwrap(), zero);
+        let zero = Address::from([0x00; 20]);
+        assert_eq!(
+            Address::from_rlp_item(&rlp_roundtrip(&zero.to_rlp_item()).unwrap()).unwrap(),
+            zero
+        );
 
-        let arbitrary = Address::from([0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x00, 0x11, 0x22, 0x33,     
-  0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb]);
-        assert_eq!(Address::from_rlp_item(&rlp_roundtrip(&arbitrary.to_rlp_item()).unwrap()).unwrap(), arbitrary);
+        let arbitrary = Address::from([
+            0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55,
+            0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb,
+        ]);
+        assert_eq!(
+            Address::from_rlp_item(&rlp_roundtrip(&arbitrary.to_rlp_item()).unwrap()).unwrap(),
+            arbitrary
+        );
 
-        let max = Address::from([0xff;20]);
-        assert_eq!(Address::from_rlp_item(&rlp_roundtrip(&max.to_rlp_item()).unwrap()).unwrap(), max);
+        let max = Address::from([0xff; 20]);
+        assert_eq!(
+            Address::from_rlp_item(&rlp_roundtrip(&max.to_rlp_item()).unwrap()).unwrap(),
+            max
+        );
 
         let item_too_short = RlpItem::Bytes(Bytes::from(vec![0x00; 19]));
         let err_too_short = Address::from_rlp_item(&item_too_short).unwrap_err();
@@ -145,16 +228,28 @@ mod tests {
 
     #[test]
     fn test_roundtrip_b256() {
-        let zero = B256::from([0x00;32]);
-        assert_eq!(B256::from_rlp_item(&rlp_roundtrip(&zero.to_rlp_item()).unwrap()).unwrap(), zero);
+        let zero = B256::from([0x00; 32]);
+        assert_eq!(
+            B256::from_rlp_item(&rlp_roundtrip(&zero.to_rlp_item()).unwrap()).unwrap(),
+            zero
+        );
 
-        let arbitrary = B256::from([0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x00, 0x11, 0x22, 0x33,     
-  0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x00, 0x11, 0x22, 0x33]);
-        assert_eq!(B256::from_rlp_item(&rlp_roundtrip(&arbitrary.to_rlp_item()).unwrap()).unwrap(), arbitrary);
+        let arbitrary = B256::from([
+            0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55,
+            0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
+            0x00, 0x11, 0x22, 0x33,
+        ]);
+        assert_eq!(
+            B256::from_rlp_item(&rlp_roundtrip(&arbitrary.to_rlp_item()).unwrap()).unwrap(),
+            arbitrary
+        );
 
-        let max = B256::from([0xff;32]);
-        assert_eq!(B256::from_rlp_item(&rlp_roundtrip(&max.to_rlp_item()).unwrap()).unwrap(), max);
-        
+        let max = B256::from([0xff; 32]);
+        assert_eq!(
+            B256::from_rlp_item(&rlp_roundtrip(&max.to_rlp_item()).unwrap()).unwrap(),
+            max
+        );
+
         let item_too_short = RlpItem::Bytes(Bytes::from(vec![0x00; 31]));
         let err_too_short = B256::from_rlp_item(&item_too_short).unwrap_err();
         assert!(matches!(err_too_short, RlpError::InvalidLength(31)));
@@ -174,8 +269,22 @@ mod tests {
     fn assert_tx_eq(a: &Transaction, b: &Transaction) {
         match (a, b) {
             (
-                Transaction::Legacy { nonce: n1, gas_price: gp1, gas_limit: gl1, to: t1, value: v1, data: d1 },
-                Transaction::Legacy { nonce: n2, gas_price: gp2, gas_limit: gl2, to: t2, value: v2, data: d2 },
+                Transaction::Legacy {
+                    nonce: n1,
+                    gas_price: gp1,
+                    gas_limit: gl1,
+                    to: t1,
+                    value: v1,
+                    data: d1,
+                },
+                Transaction::Legacy {
+                    nonce: n2,
+                    gas_price: gp2,
+                    gas_limit: gl2,
+                    to: t2,
+                    value: v2,
+                    data: d2,
+                },
             ) => {
                 assert_eq!(n1, n2);
                 assert_eq!(gp1, gp2);
@@ -185,8 +294,26 @@ mod tests {
                 assert_eq!(d1, d2);
             }
             (
-                Transaction::Eip1559 { nonce: n1, max_priority_fee_per_gas: mp1, max_fee_per_gas: mf1, gas_limit: gl1, to: t1, value: v1, data: d1, access_list: al1 },
-                Transaction::Eip1559 { nonce: n2, max_priority_fee_per_gas: mp2, max_fee_per_gas: mf2, gas_limit: gl2, to: t2, value: v2, data: d2, access_list: al2 },
+                Transaction::Eip1559 {
+                    nonce: n1,
+                    max_priority_fee_per_gas: mp1,
+                    max_fee_per_gas: mf1,
+                    gas_limit: gl1,
+                    to: t1,
+                    value: v1,
+                    data: d1,
+                    access_list: al1,
+                },
+                Transaction::Eip1559 {
+                    nonce: n2,
+                    max_priority_fee_per_gas: mp2,
+                    max_fee_per_gas: mf2,
+                    gas_limit: gl2,
+                    to: t2,
+                    value: v2,
+                    data: d2,
+                    access_list: al2,
+                },
             ) => {
                 assert_eq!(n1, n2);
                 assert_eq!(mp1, mp2);
@@ -202,8 +329,30 @@ mod tests {
                 }
             }
             (
-                Transaction::Eip4844 { nonce: n1, max_priority_fee_per_gas: mp1, max_fee_per_gas: mf1, max_fee_per_blob_gas: mb1, gas_limit: gl1, to: t1, value: v1, data: d1, access_list: al1, blob_versioned_hashes: bh1 },
-                Transaction::Eip4844 { nonce: n2, max_priority_fee_per_gas: mp2, max_fee_per_gas: mf2, max_fee_per_blob_gas: mb2, gas_limit: gl2, to: t2, value: v2, data: d2, access_list: al2, blob_versioned_hashes: bh2 },
+                Transaction::Eip4844 {
+                    nonce: n1,
+                    max_priority_fee_per_gas: mp1,
+                    max_fee_per_gas: mf1,
+                    max_fee_per_blob_gas: mb1,
+                    gas_limit: gl1,
+                    to: t1,
+                    value: v1,
+                    data: d1,
+                    access_list: al1,
+                    blob_versioned_hashes: bh1,
+                },
+                Transaction::Eip4844 {
+                    nonce: n2,
+                    max_priority_fee_per_gas: mp2,
+                    max_fee_per_gas: mf2,
+                    max_fee_per_blob_gas: mb2,
+                    gas_limit: gl2,
+                    to: t2,
+                    value: v2,
+                    data: d2,
+                    access_list: al2,
+                    blob_versioned_hashes: bh2,
+                },
             ) => {
                 assert_eq!(n1, n2);
                 assert_eq!(mp1, mp2);
@@ -230,7 +379,8 @@ mod tests {
             address: Address::from([0x11; 20]),
             storage_keys: vec![B256::from([0x22; 32]), B256::from([0x33; 32])],
         };
-        let decoded = AccessListItem::from_rlp_item(&rlp_roundtrip(&item.to_rlp_item()).unwrap()).unwrap();
+        let decoded =
+            AccessListItem::from_rlp_item(&rlp_roundtrip(&item.to_rlp_item()).unwrap()).unwrap();
         assert_eq!(decoded.address, item.address);
         assert_eq!(decoded.storage_keys, item.storage_keys);
 
@@ -238,7 +388,8 @@ mod tests {
             address: Address::from([0x00; 20]),
             storage_keys: vec![],
         };
-        let decoded_empty = AccessListItem::from_rlp_item(&rlp_roundtrip(&empty.to_rlp_item()).unwrap()).unwrap();
+        let decoded_empty =
+            AccessListItem::from_rlp_item(&rlp_roundtrip(&empty.to_rlp_item()).unwrap()).unwrap();
         assert_eq!(decoded_empty.address, empty.address);
         assert_eq!(decoded_empty.storage_keys, empty.storage_keys);
     }

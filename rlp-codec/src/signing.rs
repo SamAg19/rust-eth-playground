@@ -1,8 +1,8 @@
 use bytes::{BufMut, Bytes, BytesMut};
-use types::{Address, B256, Transaction};
-use sha3::{Keccak256, Digest};
-use k256::{ecdsa::{RecoveryId, Signature, SigningKey, VerifyingKey}};
+use k256::ecdsa::{RecoveryId, Signature, SigningKey, VerifyingKey};
+use sha3::{Digest, Keccak256};
 use thiserror::Error;
+use types::{Address, B256, Transaction};
 
 use crate::{RlpEncodable, RlpError, RlpItem, encode};
 
@@ -32,7 +32,14 @@ fn legacy_to_wire(signed_tx: &SignedTransaction) -> Result<Bytes, RlpError> {
     let mut fields: Vec<RlpItem> = vec![];
 
     match &signed_tx.transaction {
-        Transaction::Legacy { nonce, gas_price, gas_limit, to, value, data } => {
+        Transaction::Legacy {
+            nonce,
+            gas_price,
+            gas_limit,
+            to,
+            value,
+            data,
+        } => {
             fields.push(nonce.to_rlp_item());
             fields.push(gas_price.to_rlp_item());
             fields.push(gas_limit.to_rlp_item());
@@ -58,7 +65,16 @@ fn typed_to_wire(signed_tx: &SignedTransaction) -> Result<Bytes, RlpError> {
     let mut fields: Vec<RlpItem> = vec![];
 
     match &signed_tx.transaction {
-        Transaction::Eip1559 { nonce, max_priority_fee_per_gas, max_fee_per_gas, gas_limit, to, value, data, access_list } => {
+        Transaction::Eip1559 {
+            nonce,
+            max_priority_fee_per_gas,
+            max_fee_per_gas,
+            gas_limit,
+            to,
+            value,
+            data,
+            access_list,
+        } => {
             fields.push(nonce.to_rlp_item());
             fields.push(max_priority_fee_per_gas.to_rlp_item());
             fields.push(max_fee_per_gas.to_rlp_item());
@@ -66,12 +82,25 @@ fn typed_to_wire(signed_tx: &SignedTransaction) -> Result<Bytes, RlpError> {
             fields.push(encode_to(to));
             fields.push(value.to_rlp_item());
             fields.push(data.to_rlp_item());
-            fields.push(RlpItem::List(access_list.iter().map(|a| a.to_rlp_item()).collect()));
+            fields.push(RlpItem::List(
+                access_list.iter().map(|a| a.to_rlp_item()).collect(),
+            ));
             fields.push(signed_tx.v.to_rlp_item());
             fields.push(signed_tx.r.to_rlp_item());
             fields.push(signed_tx.s.to_rlp_item());
-        },
-        Transaction::Eip4844 { nonce, max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas, gas_limit, to, value, data, access_list, blob_versioned_hashes } => {
+        }
+        Transaction::Eip4844 {
+            nonce,
+            max_priority_fee_per_gas,
+            max_fee_per_gas,
+            max_fee_per_blob_gas,
+            gas_limit,
+            to,
+            value,
+            data,
+            access_list,
+            blob_versioned_hashes,
+        } => {
             fields.push(nonce.to_rlp_item());
             fields.push(max_priority_fee_per_gas.to_rlp_item());
             fields.push(max_fee_per_gas.to_rlp_item());
@@ -79,13 +108,20 @@ fn typed_to_wire(signed_tx: &SignedTransaction) -> Result<Bytes, RlpError> {
             fields.push(encode_to(to));
             fields.push(value.to_rlp_item());
             fields.push(data.to_rlp_item());
-            fields.push(RlpItem::List(access_list.iter().map(|a| a.to_rlp_item()).collect()));
+            fields.push(RlpItem::List(
+                access_list.iter().map(|a| a.to_rlp_item()).collect(),
+            ));
             fields.push(max_fee_per_blob_gas.to_rlp_item());
-            fields.push(RlpItem::List(blob_versioned_hashes.iter().map(|h| h.to_rlp_item()).collect()));
+            fields.push(RlpItem::List(
+                blob_versioned_hashes
+                    .iter()
+                    .map(|h| h.to_rlp_item())
+                    .collect(),
+            ));
             fields.push(signed_tx.v.to_rlp_item());
             fields.push(signed_tx.r.to_rlp_item());
             fields.push(signed_tx.s.to_rlp_item());
-        },
+        }
         _ => unreachable!("typed_to_encoded_bytes called with Legacy tx"),
     }
 
@@ -94,7 +130,7 @@ fn typed_to_wire(signed_tx: &SignedTransaction) -> Result<Bytes, RlpError> {
         Transaction::Eip1559 { .. } => 0x02,
         Transaction::Eip4844 { .. } => 0x03,
     };
-    
+
     let mut buffer = BytesMut::new();
     buffer.put_u8(tx_type);
     encode(&RlpItem::List(fields), &mut buffer)?;
@@ -112,7 +148,6 @@ impl SignedTransaction {
     }
 }
 
-
 pub fn keccak256(data: &[u8]) -> B256 {
     let mut hasher = Keccak256::new();
     hasher.update(data);
@@ -122,19 +157,26 @@ pub fn keccak256(data: &[u8]) -> B256 {
     B256::new(arr)
 }
 
-fn encode_to(to: &Option<Address>) -> RlpItem {                                                                                     
-    match to {                                                                                                                      
+fn encode_to(to: &Option<Address>) -> RlpItem {
+    match to {
         Some(addr) => addr.to_rlp_item(),
-        None => RlpItem::Bytes(Bytes::new()),                                                                                       
-    }           
-} 
+        None => RlpItem::Bytes(Bytes::new()),
+    }
+}
 
 fn legacy_to_encoded_bytes(tx: &Transaction, chain_id: u64) -> Result<Bytes, RlpError> {
     let mut fields: Vec<RlpItem> = vec![];
     let mut buffer = BytesMut::new();
 
     match tx {
-        Transaction::Legacy { nonce, gas_price, gas_limit, to, value, data } => {
+        Transaction::Legacy {
+            nonce,
+            gas_price,
+            gas_limit,
+            to,
+            value,
+            data,
+        } => {
             fields.push(nonce.to_rlp_item());
             fields.push(gas_price.to_rlp_item());
             fields.push(gas_limit.to_rlp_item());
@@ -160,7 +202,16 @@ fn typed_to_encoded_bytes(tx: &Transaction, chain_id: u64) -> Result<Bytes, RlpE
 
     fields.push(chain_id.to_rlp_item());
     match tx {
-        Transaction::Eip1559 { nonce, max_priority_fee_per_gas, max_fee_per_gas, gas_limit, to, value, data, access_list } => {
+        Transaction::Eip1559 {
+            nonce,
+            max_priority_fee_per_gas,
+            max_fee_per_gas,
+            gas_limit,
+            to,
+            value,
+            data,
+            access_list,
+        } => {
             fields.push(nonce.to_rlp_item());
             fields.push(max_priority_fee_per_gas.to_rlp_item());
             fields.push(max_fee_per_gas.to_rlp_item());
@@ -168,9 +219,22 @@ fn typed_to_encoded_bytes(tx: &Transaction, chain_id: u64) -> Result<Bytes, RlpE
             fields.push(encode_to(to));
             fields.push(value.to_rlp_item());
             fields.push(data.to_rlp_item());
-            fields.push(RlpItem::List(access_list.iter().map(|a| a.to_rlp_item()).collect()));
-        },
-        Transaction::Eip4844 { nonce, max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas, gas_limit, to, value, data, access_list, blob_versioned_hashes } => {
+            fields.push(RlpItem::List(
+                access_list.iter().map(|a| a.to_rlp_item()).collect(),
+            ));
+        }
+        Transaction::Eip4844 {
+            nonce,
+            max_priority_fee_per_gas,
+            max_fee_per_gas,
+            max_fee_per_blob_gas,
+            gas_limit,
+            to,
+            value,
+            data,
+            access_list,
+            blob_versioned_hashes,
+        } => {
             fields.push(nonce.to_rlp_item());
             fields.push(max_priority_fee_per_gas.to_rlp_item());
             fields.push(max_fee_per_gas.to_rlp_item());
@@ -178,10 +242,17 @@ fn typed_to_encoded_bytes(tx: &Transaction, chain_id: u64) -> Result<Bytes, RlpE
             fields.push(encode_to(to));
             fields.push(value.to_rlp_item());
             fields.push(data.to_rlp_item());
-            fields.push(RlpItem::List(access_list.iter().map(|a| a.to_rlp_item()).collect()));
+            fields.push(RlpItem::List(
+                access_list.iter().map(|a| a.to_rlp_item()).collect(),
+            ));
             fields.push(max_fee_per_blob_gas.to_rlp_item());
-            fields.push(RlpItem::List(blob_versioned_hashes.iter().map(|h| h.to_rlp_item()).collect()));
-        },
+            fields.push(RlpItem::List(
+                blob_versioned_hashes
+                    .iter()
+                    .map(|h| h.to_rlp_item())
+                    .collect(),
+            ));
+        }
         _ => unreachable!("typed_to_encoded_bytes called with Legacy tx"),
     }
 
@@ -190,7 +261,7 @@ fn typed_to_encoded_bytes(tx: &Transaction, chain_id: u64) -> Result<Bytes, RlpE
         Transaction::Eip1559 { .. } => 0x02,
         Transaction::Eip4844 { .. } => 0x03,
     };
-    
+
     let mut buffer = BytesMut::new();
     buffer.put_u8(tx_type);
     encode(&RlpItem::List(fields), &mut buffer)?;
@@ -198,10 +269,16 @@ fn typed_to_encoded_bytes(tx: &Transaction, chain_id: u64) -> Result<Bytes, RlpE
     Ok(buffer.freeze())
 }
 
-pub fn sign(transaction : &Transaction, private_key_bytes: &[u8], chain_id: u64) -> Result<SignedTransaction, SigningError> {
+pub fn sign(
+    transaction: &Transaction,
+    private_key_bytes: &[u8],
+    chain_id: u64,
+) -> Result<SignedTransaction, SigningError> {
     let payload = match transaction {
         Transaction::Legacy { .. } => legacy_to_encoded_bytes(transaction, chain_id)?,
-        Transaction::Eip1559 { .. } | Transaction::Eip4844 { .. } => typed_to_encoded_bytes(transaction, chain_id)?,
+        Transaction::Eip1559 { .. } | Transaction::Eip4844 { .. } => {
+            typed_to_encoded_bytes(transaction, chain_id)?
+        }
     };
 
     let hash_bytes = keccak256(&payload);
@@ -209,47 +286,65 @@ pub fn sign(transaction : &Transaction, private_key_bytes: &[u8], chain_id: u64)
     let key_array: &[u8; 32] = private_key_bytes
         .try_into()
         .map_err(|_| SigningError::InvalidPrivateKey)?;
-    let signing_key = SigningKey::from_bytes(key_array.into())
-        .map_err(|_| SigningError::InvalidPrivateKey)?;
+    let signing_key =
+        SigningKey::from_bytes(key_array.into()).map_err(|_| SigningError::InvalidPrivateKey)?;
 
-    let (signature, recovery_id ) = signing_key.sign_prehash_recoverable(hash_bytes.as_bytes())?;
-    let sig_bytes = signature.to_bytes(); 
-    
+    let (signature, recovery_id) = signing_key.sign_prehash_recoverable(hash_bytes.as_bytes())?;
+    let sig_bytes = signature.to_bytes();
+
     let r_bytes: [u8; 32] = sig_bytes[..32]
-      .try_into()
-      .map_err(|_| SigningError::InvalidSignature)?;
+        .try_into()
+        .map_err(|_| SigningError::InvalidSignature)?;
     let r = B256::from(r_bytes);
 
     let s_bytes: [u8; 32] = sig_bytes[32..]
-      .try_into()
-      .map_err(|_| SigningError::InvalidSignature)?;
+        .try_into()
+        .map_err(|_| SigningError::InvalidSignature)?;
     let s = B256::from(s_bytes);
 
     let v = match transaction {
-        Transaction::Legacy { .. } => recovery_id.to_byte() as u64 + chain_id.checked_mul(2).ok_or(SigningError::InvalidSignature)? + 35,
+        Transaction::Legacy { .. } => {
+            recovery_id.to_byte() as u64
+                + chain_id
+                    .checked_mul(2)
+                    .ok_or(SigningError::InvalidSignature)?
+                + 35
+        }
         Transaction::Eip1559 { .. } | Transaction::Eip4844 { .. } => recovery_id.to_byte() as u64,
     };
 
-    Ok(SignedTransaction { transaction: transaction.clone(), v, r, s })
+    Ok(SignedTransaction {
+        transaction: transaction.clone(),
+        v,
+        r,
+        s,
+    })
 }
 
 pub fn recover_sender(signed: &SignedTransaction, chain_id: u64) -> Result<Address, SigningError> {
     let payload = match signed.transaction {
         Transaction::Legacy { .. } => legacy_to_encoded_bytes(&signed.transaction, chain_id)?,
-        Transaction::Eip1559 { .. } | Transaction::Eip4844 { .. } => typed_to_encoded_bytes(&signed.transaction, chain_id)?,
+        Transaction::Eip1559 { .. } | Transaction::Eip4844 { .. } => {
+            typed_to_encoded_bytes(&signed.transaction, chain_id)?
+        }
     };
 
-    let hash_bytes = keccak256(&payload);   
+    let hash_bytes = keccak256(&payload);
 
     let recovery_id_byte: u64 = match signed.transaction {
-        Transaction::Legacy { .. } => signed.v                                                                                          
-            .checked_sub(chain_id.checked_mul(2).ok_or(SigningError::InvalidSignature)?)                                                
-            .and_then(|x| x.checked_sub(35))                                                                                            
-            .ok_or(SigningError::InvalidSignature)?,                                                                                    
+        Transaction::Legacy { .. } => signed
+            .v
+            .checked_sub(
+                chain_id
+                    .checked_mul(2)
+                    .ok_or(SigningError::InvalidSignature)?,
+            )
+            .and_then(|x| x.checked_sub(35))
+            .ok_or(SigningError::InvalidSignature)?,
         Transaction::Eip1559 { .. } | Transaction::Eip4844 { .. } => signed.v,
-    };                                                                                                                                  
+    };
 
-    if recovery_id_byte > 1 {                                                                                                           
+    if recovery_id_byte > 1 {
         return Err(SigningError::InvalidSignature);
     }
     let recovery_id = RecoveryId::try_from(recovery_id_byte as u8)?;
@@ -258,13 +353,16 @@ pub fn recover_sender(signed: &SignedTransaction, chain_id: u64) -> Result<Addre
     sig_bytes[..32].copy_from_slice(signed.r.as_bytes());
     sig_bytes[32..].copy_from_slice(signed.s.as_bytes());
     let signature = Signature::from_slice(&sig_bytes)?;
-    let public_key = VerifyingKey::recover_from_prehash(hash_bytes.as_bytes(), &signature, recovery_id).map_err(|_| SigningError::RecoveryFailed)?;
-    
+    let public_key =
+        VerifyingKey::recover_from_prehash(hash_bytes.as_bytes(), &signature, recovery_id)
+            .map_err(|_| SigningError::RecoveryFailed)?;
+
     let public_key_bytes = public_key.to_encoded_point(false);
     let public_key_hash = keccak256(&public_key_bytes.as_bytes()[1..]);
 
-    let address =  Address::try_from(&public_key_hash.as_bytes()[12..]).map_err(|_| SigningError::RecoveryFailed)?;
-    
+    let address = Address::try_from(&public_key_hash.as_bytes()[12..])
+        .map_err(|_| SigningError::RecoveryFailed)?;
+
     Ok(address)
 }
 
@@ -328,10 +426,8 @@ mod tests {
         let hash = keccak256(&[]);
         assert_eq!(
             hash,
-            B256::from_str(
-                "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
-            )
-            .unwrap()
+            B256::from_str("0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")
+                .unwrap()
         );
     }
 
@@ -547,8 +643,14 @@ mod tests {
         // Cheap sanity check: changing any one of (transaction body, chain_id, tx type)
         // must produce a different hash. If two of these collide, the wire encoding
         // is failing to commit to the field that changed.
-        let legacy_chain1 = sign(&legacy_tx(), &TEST_PRIVATE_KEY, 1).unwrap().hash().unwrap();
-        let legacy_chain137 = sign(&legacy_tx(), &TEST_PRIVATE_KEY, 137).unwrap().hash().unwrap();
+        let legacy_chain1 = sign(&legacy_tx(), &TEST_PRIVATE_KEY, 1)
+            .unwrap()
+            .hash()
+            .unwrap();
+        let legacy_chain137 = sign(&legacy_tx(), &TEST_PRIVATE_KEY, 137)
+            .unwrap()
+            .hash()
+            .unwrap();
         assert_ne!(legacy_chain1, legacy_chain137);
 
         // A different transaction body (nonce changed) on the same chain must hash differently.
@@ -560,17 +662,26 @@ mod tests {
             value: 1_000_000_000_000_000_000,
             data: vec![],
         };
-        let other_hash = sign(&other_legacy, &TEST_PRIVATE_KEY, 1).unwrap().hash().unwrap();
+        let other_hash = sign(&other_legacy, &TEST_PRIVATE_KEY, 1)
+            .unwrap()
+            .hash()
+            .unwrap();
         assert_ne!(legacy_chain1, other_hash);
 
         // A typed transaction on the same chain hashes differently from the Legacy version
         // even when the overlapping fields match — the type-byte prefix and field order
         // both flow into the hash.
-        let eip1559_hash = sign(&eip1559_tx(), &TEST_PRIVATE_KEY, 1).unwrap().hash().unwrap();
+        let eip1559_hash = sign(&eip1559_tx(), &TEST_PRIVATE_KEY, 1)
+            .unwrap()
+            .hash()
+            .unwrap();
         assert_ne!(legacy_chain1, eip1559_hash);
 
         // Eip4844 hashes differently from Eip1559, again due to the differing wire format.
-        let eip4844_hash = sign(&eip4844_tx(), &TEST_PRIVATE_KEY, 1).unwrap().hash().unwrap();
+        let eip4844_hash = sign(&eip4844_tx(), &TEST_PRIVATE_KEY, 1)
+            .unwrap()
+            .hash()
+            .unwrap();
         assert_ne!(eip1559_hash, eip4844_hash);
     }
 }

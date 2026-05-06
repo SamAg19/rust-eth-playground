@@ -9,8 +9,8 @@ pub mod trie;
 #[cfg(test)]
 mod roundtrip;
 
-pub use error::RlpError;
-pub use traits::{RlpDecodable, RlpEncodable};
-pub use item::RlpItem;
-pub use encoder::encode;
 pub use decoder::decode;
+pub use encoder::encode;
+pub use error::RlpError;
+pub use item::RlpItem;
+pub use traits::{RlpDecodable, RlpEncodable};

@@ -3,16 +3,11 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum RlpError {
     #[error("Bytes length expected end at {expected} but got {actual}")]
-    InputTooShort{
-        expected: usize,
-        actual: usize
-    },
+    InputTooShort { expected: usize, actual: usize },
     #[error("Invalid RLP length prefix: {0}")]
     InvalidLength(usize),
     #[error("Unexpected trailing bytes: {count}")]
-    TrailingBytes{
-        count: usize
-    },
+    TrailingBytes { count: usize },
     #[error("Unexpected RLP type: {0}")]
     UnexpectedType(u8),
     #[error("RLP encoding overflow")]
