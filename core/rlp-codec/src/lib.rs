@@ -15,4 +15,5 @@ pub use decoder::decode;
 pub use encoder::{encode, encoded_len};
 pub use error::RlpError;
 pub use item::RlpItem;
+pub use signing::{hash_header, signed_transaction_hash};
 pub use traits::{RlpDecodable, RlpEncodable};

@@ -1,15 +1,16 @@
 use std::collections::HashMap;
 
-use rlp_codec::signing::SignedTransaction;
-use types::{Address, B256};
+use types::{Account, Address, B256, Block, Header, SignedTransaction};
 
 use crate::{
     error::ExecutionError,
-    primitives::{AccountInfo, Block, BlockNumber, Header, Receipt},
+    primitives::{BlockNumber, Receipt},
     providers::{
         BlockProvider, HeaderProvider, ReceiptProvider, StateProvider, TransactionProvider,
     },
 };
+
+use rlp_codec::{hash_header, signed_transaction_hash};
 
 #[derive(Debug, Default)]
 pub struct InMemoryProvider {
@@ -17,21 +18,22 @@ pub struct InMemoryProvider {
     pub blocks_by_hash: HashMap<B256, BlockNumber>,
     pub transactions: HashMap<B256, (SignedTransaction, BlockNumber)>,
     pub receipts: HashMap<B256, Receipt>,
-    pub state: HashMap<Address, AccountInfo>,
+    pub state: HashMap<Address, Account>,
     pub storage: HashMap<(Address, B256), B256>,
 }
 
 impl InMemoryProvider {
     pub fn insert_block(&mut self, block: Block) -> Result<(), ExecutionError> {
-        self.blocks_by_hash
-            .insert(block.header.hash, block.header.block_number);
+        let block_hash = hash_header(&block.header)?;
+        let block_number = block.header.number;
+        self.blocks_by_hash.insert(block_hash, block_number);
         for signed_tx in &block.transactions {
             self.transactions.insert(
-                signed_tx.hash()?,
-                (signed_tx.clone(), block.header.block_number),
+                signed_transaction_hash(signed_tx)?,
+                (signed_tx.clone(), block_number),
             );
         }
-        self.blocks.insert(block.header.block_number, block);
+        self.blocks.insert(block_number, block);
         Ok(())
     }
 
@@ -48,7 +50,7 @@ impl InMemoryProvider {
         self.receipts.insert(receipt.transaction_hash, receipt);
     }
 
-    pub fn set_account(&mut self, address: Address, info: AccountInfo) {
+    pub fn set_account(&mut self, address: Address, info: Account) {
         self.state.insert(address, info);
     }
 
@@ -91,7 +93,7 @@ impl HeaderProvider for InMemoryProvider {
 }
 
 impl StateProvider for InMemoryProvider {
-    fn get_account(&self, address: Address) -> Result<AccountInfo, ExecutionError> {
+    fn get_account(&self, address: Address) -> Result<Account, ExecutionError> {
         self.state
             .get(&address)
             .cloned()
@@ -149,7 +151,7 @@ mod tests {
     const MISSING_NUMBER: BlockNumber = 9999;
 
     fn block_hash() -> B256 {
-        B256::new([0xaa; 32])
+        hash_header(&make_header()).unwrap()
     }
     fn parent_hash() -> B256 {
         B256::new([0x99; 32])
@@ -189,16 +191,14 @@ mod tests {
 
     fn make_header() -> Header {
         Header {
-            block_number: BLOCK_NUMBER,
             parent_hash: parent_hash(),
+            beneficiary: Address::zero(),
             state_root: B256::new([0x55; 32]),
             transactions_root: B256::new([0x66; 32]),
-            receipts_root: B256::new([0x77; 32]),
-            logs_bloom: Bloom::zero(),
             gas_limit: 30_000_000,
             gas_used: 42_000,
-            base_fee_per_gas: 1_000_000_000,
-            hash: block_hash(),
+            timestamp: 12,
+            number: BLOCK_NUMBER,
         }
     }
 
@@ -220,12 +220,11 @@ mod tests {
         }
     }
 
-    fn make_account() -> AccountInfo {
-        AccountInfo {
+    fn make_account() -> Account {
+        Account {
             balance: 1_000_000,
             nonce: 5,
             code_hash: B256::new([0xcc; 32]),
-            code: Some(vec![0xde, 0xad, 0xbe, 0xef]),
         }
     }
 
@@ -269,7 +268,7 @@ mod tests {
         p.get_header_by_hash(h)
     }
 
-    fn fetch_account<P: StateProvider>(p: &P, a: Address) -> Result<AccountInfo, ExecutionError> {
+    fn fetch_account<P: StateProvider>(p: &P, a: Address) -> Result<Account, ExecutionError> {
         p.get_account(a)
     }
 
@@ -279,10 +278,6 @@ mod tests {
 
     fn fetch_nonce<P: StateProvider>(p: &P, a: Address) -> Result<u64, ExecutionError> {
         p.get_nonce(a)
-    }
-
-    fn fetch_code<P: StateProvider>(p: &P, a: Address) -> Result<Option<Vec<u8>>, ExecutionError> {
-        p.get_code(a)
     }
 
     fn fetch_storage<P: StateProvider>(
@@ -315,7 +310,7 @@ mod tests {
     fn block_by_number_success() {
         let p = populated();
         let block = fetch_block(&p, BLOCK_NUMBER).unwrap();
-        assert_eq!(block.header.hash, block_hash());
+        assert_eq!(hash_header(&block.header).unwrap(), block_hash());
         assert_eq!(block.transactions.len(), 2);
     }
 
@@ -323,14 +318,14 @@ mod tests {
     fn block_by_hash_success() {
         let p = populated();
         let block = fetch_block_by_hash(&p, block_hash()).unwrap();
-        assert_eq!(block.header.block_number, BLOCK_NUMBER);
+        assert_eq!(block.header.number, BLOCK_NUMBER);
     }
 
     #[test]
     fn header_by_number_success() {
         let p = populated();
         let header = fetch_header_by_number(&p, BLOCK_NUMBER).unwrap();
-        assert_eq!(header.hash, block_hash());
+        assert_eq!(hash_header(&header).unwrap(), block_hash());
         assert_eq!(header.parent_hash, parent_hash());
     }
 
@@ -338,7 +333,7 @@ mod tests {
     fn header_by_hash_success() {
         let p = populated();
         let header = fetch_header_by_hash(&p, block_hash()).unwrap();
-        assert_eq!(header.block_number, BLOCK_NUMBER);
+        assert_eq!(header.number, BLOCK_NUMBER);
     }
 
     #[test]
@@ -354,10 +349,6 @@ mod tests {
         let p = populated();
         assert_eq!(fetch_balance(&p, account_addr()).unwrap(), 1_000_000);
         assert_eq!(fetch_nonce(&p, account_addr()).unwrap(), 5);
-        assert_eq!(
-            fetch_code(&p, account_addr()).unwrap(),
-            Some(vec![0xde, 0xad, 0xbe, 0xef])
-        );
     }
 
     #[test]

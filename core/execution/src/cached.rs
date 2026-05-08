@@ -1,15 +1,15 @@
 use std::{cell::RefCell, collections::HashMap};
 
-use rlp_codec::signing::SignedTransaction;
-use types::{Address, B256};
+use types::{Account, Address, B256, Block, Header, SignedTransaction};
 
 use crate::{
     error::ExecutionError,
-    primitives::{AccountInfo, Block, BlockNumber, Header, Receipt},
+    primitives::{BlockNumber, Receipt},
     providers::{
         BlockProvider, HeaderProvider, ReceiptProvider, StateProvider, TransactionProvider,
     },
 };
+use rlp_codec::hash_header;
 
 // Interior mutability: provider trait methods take `&self`, but caching requires
 // writing to the cache on a read. The three options are:
@@ -26,7 +26,7 @@ pub struct CachedProvider<
     inner: T,
     block_cache: RefCell<HashMap<BlockNumber, Block>>,
     header_cache: RefCell<HashMap<B256, Header>>,
-    account_cache: RefCell<HashMap<Address, AccountInfo>>,
+    account_cache: RefCell<HashMap<Address, Account>>,
     capacity: usize,
 }
 
@@ -52,7 +52,7 @@ impl<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + R
         {
             let cache = self.block_cache.borrow();
 
-            if let Some(value) = cache.get(&block.header.block_number) {
+            if let Some(value) = cache.get(&block.header.number) {
                 return Ok(value.clone());
             }
         }
@@ -70,7 +70,7 @@ impl<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + R
             cache.remove(&key);
         }
 
-        cache.insert(block.header.block_number, block.clone());
+        cache.insert(block.header.number, block.clone());
         Ok(block)
     }
 
@@ -134,10 +134,11 @@ impl<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + R
 
     fn get_header_by_number(&self, number: BlockNumber) -> Result<Header, ExecutionError> {
         let header = self.inner.get_header_by_number(number)?;
+        let header_hash = hash_header(&header)?;
         {
             let cache = self.header_cache.borrow();
 
-            if let Some(value) = cache.get(&header.hash) {
+            if let Some(value) = cache.get(&header_hash) {
                 return Ok(value.clone());
             }
         }
@@ -157,7 +158,7 @@ impl<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + R
             cache.remove(&key);
         }
 
-        cache.insert(header.hash, header.clone());
+        cache.insert(header_hash, header.clone());
         Ok(header)
     }
 }
@@ -165,7 +166,7 @@ impl<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + R
 impl<T: BlockProvider + HeaderProvider + StateProvider + TransactionProvider + ReceiptProvider>
     StateProvider for CachedProvider<T>
 {
-    fn get_account(&self, address: Address) -> Result<AccountInfo, ExecutionError> {
+    fn get_account(&self, address: Address) -> Result<Account, ExecutionError> {
         {
             let cache = self.account_cache.borrow();
 
@@ -226,7 +227,6 @@ mod tests {
     use super::*;
     use crate::in_memory::InMemoryProvider;
     use crate::providers::FullProvider;
-    use types::Bloom;
 
     // Wraps an `InMemoryProvider` and counts calls into the three methods that
     // `CachedProvider` is supposed to short-circuit on a cache hit.
@@ -269,7 +269,7 @@ mod tests {
     }
 
     impl StateProvider for CountingProvider {
-        fn get_account(&self, address: Address) -> Result<AccountInfo, ExecutionError> {
+        fn get_account(&self, address: Address) -> Result<Account, ExecutionError> {
             *self.account_calls.borrow_mut() += 1;
             self.inner.get_account(address)
         }
@@ -298,16 +298,14 @@ mod tests {
 
     fn make_header(number: BlockNumber) -> Header {
         Header {
-            block_number: number,
             parent_hash: B256::new([0x99; 32]),
+            beneficiary: Address::zero(),
             state_root: B256::new([0x55; 32]),
             transactions_root: B256::new([0x66; 32]),
-            receipts_root: B256::new([0x77; 32]),
-            logs_bloom: Bloom::zero(),
             gas_limit: 30_000_000,
             gas_used: 0,
-            base_fee_per_gas: 1_000_000_000,
-            hash: B256::new([number as u8; 32]),
+            timestamp: number * 12,
+            number,
         }
     }
 
@@ -323,7 +321,7 @@ mod tests {
         for n in 0u64..5 {
             p.insert_block(make_block(n)).unwrap();
         }
-        p.set_account(Address::new([0x11; 20]), AccountInfo::default());
+        p.set_account(Address::new([0x11; 20]), Account::default());
         p
     }
 
@@ -333,7 +331,7 @@ mod tests {
         let cached = CachedProvider::new(counting, 10);
 
         let block = cached.get_block_by_number(1).unwrap();
-        assert_eq!(block.header.block_number, 1);
+        assert_eq!(block.header.number, 1);
         assert_eq!(*cached.inner.block_by_number_calls.borrow(), 1);
         assert!(cached.block_cache.borrow().contains_key(&1));
     }
@@ -355,7 +353,7 @@ mod tests {
         let counting = CountingProvider::new(populated_inner());
         let cached = CachedProvider::new(counting, 10);
 
-        let hash = make_header(3).hash;
+        let hash = hash_header(&make_header(3)).unwrap();
         let _ = cached.get_header_by_hash(hash).unwrap();
         let _ = cached.get_header_by_hash(hash).unwrap();
 
@@ -382,7 +380,6 @@ mod tests {
         let addr = Address::new([0x11; 20]);
         let _ = cached.get_balance(addr).unwrap();
         let _ = cached.get_nonce(addr).unwrap();
-        let _ = cached.get_code(addr).unwrap();
 
         // All three delegate to `get_account`; only the first should hit the inner.
         assert_eq!(*cached.inner.account_calls.borrow(), 1);
@@ -402,7 +399,10 @@ mod tests {
 
     fn exercise_full_provider<P: FullProvider>(p: &P, tx_hash: B256, addr: Address) {
         assert!(p.get_block_by_number(0).is_ok());
-        assert!(p.get_header_by_hash(make_header(0).hash).is_ok());
+        assert!(
+            p.get_header_by_hash(hash_header(&make_header(0)).unwrap())
+                .is_ok()
+        );
         assert!(p.get_account(addr).is_ok());
         assert!(p.get_storage(addr, B256::default()).is_ok());
         assert!(p.get_transaction(tx_hash).is_err()); // no tx inserted — just checks the method is reachable

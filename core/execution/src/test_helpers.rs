@@ -1,10 +1,7 @@
-use rlp_codec::signing::{SignedTransaction, recover_sender, sign};
-use types::{Address, B256, Transaction};
+use rlp_codec::signing::{recover_sender, sign};
+use types::{Address, B256, Block, Header, SignedTransaction, Transaction};
 
-use crate::{
-    executor::BlockWithSenders,
-    primitives::{Block, Header},
-};
+use crate::executor::BlockWithSenders;
 
 pub const TEST_PRIVATE_KEY: [u8; 32] = [
     0x4c, 0x0c, 0x4d, 0x14, 0x6c, 0x46, 0xed, 0x91, 0xf6, 0xa9, 0x35, 0x09, 0x46, 0xa3, 0x69, 0x9e,

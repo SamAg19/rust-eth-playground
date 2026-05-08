@@ -85,7 +85,7 @@ pub async fn manage(
                                 },
                                 Message::Pong => eprintln!("Pong messsage received"),
                                 Message::GetBlockHeaders { .. } => {
-                                    eprintln!("Get Block Headers messsage received");
+                                    eprintln!("Get ExecutionBlock Headers messsage received");
                                 }
                             }
                         }

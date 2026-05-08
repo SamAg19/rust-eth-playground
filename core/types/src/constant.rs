@@ -1,0 +1,1 @@
+pub const GAS_LIMIT_PER_BLOCK: u64 = 30_000_000;

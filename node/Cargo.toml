@@ -1,0 +1,16 @@
+[package]
+name = "node"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+types = { path = "../core/types", features = [] }
+rlp-codec = { path = "../core/rlp-codec", features = [] }
+networking = { path = "../core/networking", features = [] }
+execution = { path = "../core/execution", features = [] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.22", features = ["fmt"] }
+
+[features]
+optimism=["types/optimism", "rlp-codec/optimism"]
+test-utils=[]

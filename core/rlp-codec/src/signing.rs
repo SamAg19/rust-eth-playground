@@ -1,19 +1,10 @@
 use bytes::{BufMut, Bytes, BytesMut};
 use k256::ecdsa::{RecoveryId, Signature, SigningKey, VerifyingKey};
-use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
 use thiserror::Error;
-use types::{Address, B256, Transaction};
+use types::{Address, B256, Header, SignedTransaction, Transaction};
 
 use crate::{RlpEncodable, RlpError, RlpItem, encode};
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SignedTransaction {
-    pub transaction: Transaction,
-    pub v: u64,
-    pub r: B256,
-    pub s: B256,
-}
 
 #[derive(Debug, Error)]
 pub enum SigningError {
@@ -135,16 +126,20 @@ fn typed_to_wire(signed_tx: &SignedTransaction) -> Result<Bytes, RlpError> {
     Ok(buffer.freeze())
 }
 
-impl SignedTransaction {
-    pub fn hash(&self) -> Result<B256, SigningError> {
-        let bytes = match &self.transaction {
-            Transaction::Legacy { .. } => legacy_to_wire(self)?,
-            Transaction::Eip1559 { .. } | Transaction::Eip4844 { .. } => typed_to_wire(self)?,
-            #[cfg(feature = "optimism")]
-            Transaction::Deposit { .. } => todo!(),
-        };
-        Ok(keccak256(&bytes))
-    }
+pub fn signed_transaction_hash(signed: &SignedTransaction) -> Result<B256, SigningError> {
+    let bytes = match signed.transaction {
+        Transaction::Legacy { .. } => legacy_to_wire(signed)?,
+        Transaction::Eip1559 { .. } | Transaction::Eip4844 { .. } => typed_to_wire(signed)?,
+        #[cfg(feature = "optimism")]
+        Transaction::Deposit { .. } => todo!(),
+    };
+    Ok(keccak256(&bytes))
+}
+
+pub fn hash_header(header: &Header) -> Result<B256, RlpError> {
+    let mut buffer = BytesMut::new();
+    encode(&header.to_rlp_item(), &mut buffer)?;
+    Ok(keccak256(&buffer.freeze()))
 }
 
 pub fn keccak256(data: &[u8]) -> B256 {
@@ -628,13 +623,13 @@ mod tests {
         // This is the determinism / golden-vector test from §4.4: capture the hash
         // once, then verify it doesn't drift on subsequent runs.
         let signed = sign(&legacy_tx(), &TEST_PRIVATE_KEY, 1).unwrap();
-        let hash_first = signed.hash().unwrap();
-        let hash_second = signed.hash().unwrap();
+        let hash_first = signed_transaction_hash(&signed).unwrap();
+        let hash_second = signed_transaction_hash(&signed).unwrap();
         assert_eq!(hash_first, hash_second);
 
         // Re-signing the same inputs should also reproduce the same hash.
         let signed_again = sign(&legacy_tx(), &TEST_PRIVATE_KEY, 1).unwrap();
-        assert_eq!(signed_again.hash().unwrap(), hash_first);
+        assert_eq!(signed_transaction_hash(&signed_again).unwrap(), hash_first);
 
         // The hash is non-zero — sanity check that we're hashing something real.
         assert_ne!(hash_first, B256::new([0; 32]));
@@ -645,14 +640,12 @@ mod tests {
         // Cheap sanity check: changing any one of (transaction body, chain_id, tx type)
         // must produce a different hash. If two of these collide, the wire encoding
         // is failing to commit to the field that changed.
-        let legacy_chain1 = sign(&legacy_tx(), &TEST_PRIVATE_KEY, 1)
-            .unwrap()
-            .hash()
-            .unwrap();
-        let legacy_chain137 = sign(&legacy_tx(), &TEST_PRIVATE_KEY, 137)
-            .unwrap()
-            .hash()
-            .unwrap();
+
+        let signed_legacy_chain1 = sign(&legacy_tx(), &TEST_PRIVATE_KEY, 1).unwrap();
+        let legacy_chain1 = signed_transaction_hash(&signed_legacy_chain1).unwrap();
+
+        let signed_legacy_chain137 = sign(&legacy_tx(), &TEST_PRIVATE_KEY, 137).unwrap();
+        let legacy_chain137 = signed_transaction_hash(&signed_legacy_chain137).unwrap();
         assert_ne!(legacy_chain1, legacy_chain137);
 
         // A different transaction body (nonce changed) on the same chain must hash differently.
@@ -664,26 +657,21 @@ mod tests {
             value: 1_000_000_000_000_000_000,
             data: vec![],
         };
-        let other_hash = sign(&other_legacy, &TEST_PRIVATE_KEY, 1)
-            .unwrap()
-            .hash()
-            .unwrap();
+
+        let signed_other_legacy = sign(&other_legacy, &TEST_PRIVATE_KEY, 1).unwrap();
+        let other_hash = signed_transaction_hash(&signed_other_legacy).unwrap();
         assert_ne!(legacy_chain1, other_hash);
 
         // A typed transaction on the same chain hashes differently from the Legacy version
         // even when the overlapping fields match — the type-byte prefix and field order
         // both flow into the hash.
-        let eip1559_hash = sign(&eip1559_tx(), &TEST_PRIVATE_KEY, 1)
-            .unwrap()
-            .hash()
-            .unwrap();
+        let signed_eip1559 = sign(&eip1559_tx(), &TEST_PRIVATE_KEY, 1).unwrap();
+        let eip1559_hash = signed_transaction_hash(&signed_eip1559).unwrap();
         assert_ne!(legacy_chain1, eip1559_hash);
 
         // Eip4844 hashes differently from Eip1559, again due to the differing wire format.
-        let eip4844_hash = sign(&eip4844_tx(), &TEST_PRIVATE_KEY, 1)
-            .unwrap()
-            .hash()
-            .unwrap();
+        let signed_eip4844 = sign(&eip4844_tx(), &TEST_PRIVATE_KEY, 1).unwrap();
+        let eip4844_hash = signed_transaction_hash(&signed_eip4844).unwrap();
         assert_ne!(eip1559_hash, eip4844_hash);
     }
 }

@@ -1,4 +1,4 @@
-use rlp_codec::{signing::SigningError, trie::TrieError};
+use rlp_codec::{RlpError, signing::SigningError, trie::TrieError};
 use thiserror::Error;
 use types::{Address, B256, TransactionError};
 
@@ -49,4 +49,6 @@ pub enum ExecutionError {
     Signing(#[from] SigningError),
     #[error(transparent)]
     RootCompute(#[from] TrieError),
+    #[error(transparent)]
+    Rlp(#[from] RlpError),
 }

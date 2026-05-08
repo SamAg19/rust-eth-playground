@@ -1,12 +1,14 @@
-use rlp_codec::signing::{recover_sender, sign};
-use types::{Address, B256, Bloom, Transaction};
+use rlp_codec::{
+    hash_header,
+    signing::{recover_sender, sign},
+};
+use types::{Account, Address, B256, Block, GAS_LIMIT_PER_BLOCK, Header, Transaction};
 
 use crate::{
     error::ExecutionError,
     executor::{BlockWithSenders, ExecutionOutput, ValueTransferExecutor, compute_state_root},
     in_memory::InMemoryProvider,
     pipeline::Pipeline,
-    primitives::{AccountInfo, Block, Header},
     providers::{BlockProvider, StateProvider},
     validator::BasicValidator,
 };
@@ -17,7 +19,6 @@ const TEST_PRIVATE_KEY: [u8; 32] = [
 ];
 
 const TEST_CHAIN_ID: u64 = 1;
-const GAS_LIMIT_PER_BLOCK: u64 = 30_000_000;
 const BASE_FEE: u128 = 1_000_000_000;
 
 pub struct TestHarness {
@@ -38,29 +39,28 @@ impl TestHarness {
         for (address, balance, nonce) in accounts {
             provider.set_account(
                 address,
-                AccountInfo {
+                Account {
                     balance,
                     nonce,
-                    ..AccountInfo::default()
+                    ..Account::default()
                 },
             );
         }
 
-        let genesis_hash = block_hash(0);
         let genesis_state_root = compute_state_root(&provider)?;
+        let genesis_header = Header {
+            parent_hash: B256::zero(),
+            beneficiary: Address::zero(),
+            state_root: genesis_state_root,
+            transactions_root: B256::zero(),
+            gas_limit: GAS_LIMIT_PER_BLOCK,
+            gas_used: 0,
+            timestamp: 0,
+            number: 0,
+        };
+        let genesis_hash = hash_header(&genesis_header)?;
         let genesis = Block {
-            header: Header {
-                block_number: 0,
-                parent_hash: B256::zero(),
-                state_root: genesis_state_root,
-                transactions_root: B256::zero(),
-                receipts_root: B256::zero(),
-                logs_bloom: Bloom::zero(),
-                gas_limit: GAS_LIMIT_PER_BLOCK,
-                gas_used: 0,
-                base_fee_per_gas: BASE_FEE,
-                hash: genesis_hash,
-            },
+            header: genesis_header,
             transactions: vec![],
         };
         provider.insert_block(genesis)?;
@@ -83,10 +83,10 @@ impl TestHarness {
     pub fn fund_account(&mut self, address: Address, balance: u128, nonce: u64) {
         self.pipeline.provider.set_account(
             address,
-            AccountInfo {
+            Account {
                 balance,
                 nonce,
-                ..AccountInfo::default()
+                ..Account::default()
             },
         );
     }
@@ -120,16 +120,14 @@ impl TestHarness {
 
         let mut block = Block {
             header: Header {
-                block_number: self.current_block_number + 1,
-                parent_hash: parent.header.hash,
+                parent_hash: hash_header(&parent.header)?,
+                beneficiary: Address::zero(),
                 state_root: B256::zero(),
                 transactions_root: B256::zero(),
-                receipts_root: B256::zero(),
-                logs_bloom: Bloom::zero(),
                 gas_limit: GAS_LIMIT_PER_BLOCK,
                 gas_used,
-                base_fee_per_gas: BASE_FEE,
-                hash: block_hash(self.current_block_number + 1),
+                timestamp: (self.current_block_number + 1) * 12,
+                number: self.current_block_number + 1,
             },
             transactions: signed,
         };
@@ -168,12 +166,6 @@ impl TestHarness {
         }
         Ok(())
     }
-}
-
-fn block_hash(number: u64) -> B256 {
-    let mut bytes = [0u8; 32];
-    bytes[24..].copy_from_slice(&number.to_be_bytes());
-    B256::new(bytes)
 }
 
 #[cfg(test)]
@@ -292,19 +284,17 @@ mod tests {
             .get_mut(&0)
             .unwrap()
             .header
-            .hash = B256::new([0xee; 32]);
+            .state_root = B256::new([0xee; 32]);
         let block = Block {
             header: Header {
-                block_number: 1,
                 parent_hash: harness.genesis_hash,
+                beneficiary: Address::zero(),
                 state_root: B256::zero(),
                 transactions_root: B256::zero(),
-                receipts_root: B256::zero(),
-                logs_bloom: Bloom::zero(),
                 gas_limit: GAS_LIMIT_PER_BLOCK,
                 gas_used: 0,
-                base_fee_per_gas: BASE_FEE,
-                hash: block_hash(1),
+                timestamp: 12,
+                number: 1,
             },
             transactions: vec![],
         };

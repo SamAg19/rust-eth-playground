@@ -40,14 +40,13 @@ impl<E: BlockExecutor, V: ConsensusValidator> Pipeline<E, V> {
 mod tests {
     use super::*;
     use crate::executor::ValueTransferExecutor;
-    use crate::primitives::{AccountInfo, Block, Header};
     use crate::providers::StateProvider;
     use crate::test_helpers::{block_with_senders, signed_legacy_tx, test_sender};
     use crate::validator::{BasicValidator, StrictValidator};
-    use types::{Address, B256, Bloom};
+    use rlp_codec::{hash_header, signed_transaction_hash};
+    use types::{Account, Address, B256, Block, GAS_LIMIT_PER_BLOCK, Header};
 
     const BASE_FEE: u128 = 1_000_000_000;
-    const GAS_LIMIT_PER_BLOCK: u64 = 30_000_000;
     const INITIAL_SENDER_BALANCE: u128 = 1_000_000_000_000_000_000; // 1 ETH
 
     fn recipient_addr() -> Address {
@@ -60,50 +59,41 @@ mod tests {
 
     fn parent_header() -> Header {
         Header {
-            block_number: 0,
             parent_hash: B256::new([0x00; 32]),
+            beneficiary: Address::zero(),
             state_root: B256::new([0x01; 32]),
             transactions_root: B256::new([0x02; 32]),
-            receipts_root: B256::new([0x03; 32]),
-            logs_bloom: Bloom::zero(),
             gas_limit: GAS_LIMIT_PER_BLOCK,
             gas_used: 0,
-            base_fee_per_gas: BASE_FEE,
-            hash: B256::new([0xaa; 32]),
+            timestamp: 0,
+            number: 0,
         }
     }
 
     fn child_header(number: u64, parent_hash: B256, gas_used: u64) -> Header {
         Header {
-            block_number: number,
             parent_hash,
+            beneficiary: Address::zero(),
             state_root: B256::new([0x10 + number as u8; 32]),
             transactions_root: B256::new([0x20 + number as u8; 32]),
-            receipts_root: B256::new([0x30 + number as u8; 32]),
-            logs_bloom: Bloom::zero(),
             gas_limit: GAS_LIMIT_PER_BLOCK,
             gas_used,
-            base_fee_per_gas: BASE_FEE,
-            hash: B256::new([0xa0 + number as u8; 32]),
+            timestamp: number * 12,
+            number,
         }
     }
 
-    fn make_signed_tx(
-        nonce: u64,
-        value: u128,
-        gas_limit: u64,
-    ) -> rlp_codec::signing::SignedTransaction {
+    fn make_signed_tx(nonce: u64, value: u128, gas_limit: u64) -> types::SignedTransaction {
         signed_legacy_tx(nonce, value, gas_limit, BASE_FEE, Some(recipient_addr()))
     }
 
     fn fund(provider: &mut InMemoryProvider, address: Address, balance: u128, nonce: u64) {
         provider.set_account(
             address,
-            AccountInfo {
+            Account {
                 balance,
                 nonce,
                 code_hash: B256::default(),
-                code: None,
             },
         );
     }
@@ -128,8 +118,11 @@ mod tests {
     fn valid_block_executes_and_produces_receipt() {
         let mut pipeline = setup_basic();
         let signed = make_signed_tx(0, 1_000_000, 21_000);
-        let expected_hash = signed.hash().unwrap();
-        let bws = block_with_senders(child_header(1, parent_header().hash, 21_000), vec![signed]);
+        let expected_hash = signed_transaction_hash(&signed).unwrap();
+        let bws = block_with_senders(
+            child_header(1, hash_header(&parent_header()).unwrap(), 21_000),
+            vec![signed],
+        );
 
         let output = pipeline.execute(&bws).unwrap();
 
@@ -162,7 +155,7 @@ mod tests {
     #[test]
     fn gas_used_exceeds_limit_fails_validation() {
         let mut pipeline = setup_basic();
-        let mut header = child_header(1, parent_header().hash, 0);
+        let mut header = child_header(1, hash_header(&parent_header()).unwrap(), 0);
         header.gas_used = GAS_LIMIT_PER_BLOCK + 1;
         let bws = block_with_senders(header, vec![]);
 
@@ -172,14 +165,10 @@ mod tests {
 
     #[test]
     fn wrong_parent_hash_fails_validation() {
-        // Seed an inconsistent provider state: `blocks_by_hash` points a hash at a
-        // block number, but the block stored under that number carries a different
-        // `header.hash`. This lets the pipeline's lookup-by-hash succeed but the
-        // returned parent's self-hash mismatches the requested hash, tripping
-        // `InvalidParentHash` in the validator.
+        // Seed an inconsistent provider state: `blocks_by_hash` points a fake hash
+        // at a stored parent whose computed canonical hash is different.
         let mut provider = InMemoryProvider::default();
-        let mut inconsistent_parent = parent_header();
-        inconsistent_parent.hash = B256::new([0xbb; 32]); // stored hash differs from index key
+        let inconsistent_parent = parent_header();
         provider.blocks.insert(
             0,
             Block {
@@ -187,7 +176,7 @@ mod tests {
                 transactions: vec![],
             },
         );
-        provider.blocks_by_hash.insert(B256::new([0xaa; 32]), 0); // index under parent_header().hash
+        provider.blocks_by_hash.insert(B256::new([0xaa; 32]), 0);
         fund(&mut provider, test_sender(), INITIAL_SENDER_BALANCE, 0);
 
         let mut pipeline = Pipeline::new(
@@ -206,7 +195,10 @@ mod tests {
         let mut pipeline = setup_basic();
         let huge_value = INITIAL_SENDER_BALANCE; // leaves no room for gas
         let signed = make_signed_tx(0, huge_value, 21_000);
-        let bws = block_with_senders(child_header(1, parent_header().hash, 21_000), vec![signed]);
+        let bws = block_with_senders(
+            child_header(1, hash_header(&parent_header()).unwrap(), 21_000),
+            vec![signed],
+        );
 
         let err = pipeline.execute(&bws).unwrap_err();
         assert!(matches!(err, ExecutionError::InsufficientBalance { .. }));
@@ -216,7 +208,10 @@ mod tests {
     fn wrong_nonce_fails_execution() {
         let mut pipeline = setup_basic();
         let signed = make_signed_tx(5, 1_000_000, 21_000); // account nonce is 0
-        let bws = block_with_senders(child_header(1, parent_header().hash, 21_000), vec![signed]);
+        let bws = block_with_senders(
+            child_header(1, hash_header(&parent_header()).unwrap(), 21_000),
+            vec![signed],
+        );
 
         let err = pipeline.execute(&bws).unwrap_err();
         assert!(matches!(err, ExecutionError::InvalidNonce { .. }));
@@ -225,7 +220,7 @@ mod tests {
     #[test]
     fn chain_of_three_blocks_reflects_all_transfers() {
         let mut pipeline = setup_basic();
-        let mut previous_hash = parent_header().hash;
+        let mut previous_hash = hash_header(&parent_header()).unwrap();
         let mut expected_sender_balance = INITIAL_SENDER_BALANCE;
         let mut expected_recipient_balance = 0u128;
 
@@ -242,7 +237,7 @@ mod tests {
 
             expected_sender_balance -= 21_000u128 * BASE_FEE + value;
             expected_recipient_balance += value;
-            previous_hash = header.hash;
+            previous_hash = hash_header(&header).unwrap();
         }
 
         let sender = pipeline.provider.get_account(test_sender()).unwrap();
@@ -274,7 +269,7 @@ mod tests {
                 Some(second_recipient_addr()),
             );
             let bws = block_with_senders(
-                child_header(1, parent_header().hash, 42_000),
+                child_header(1, hash_header(&parent_header()).unwrap(), 42_000),
                 vec![tx1, tx2],
             );
 
@@ -306,7 +301,10 @@ mod tests {
         );
 
         // Parent is block 0; child is block 5 — not contiguous.
-        let bws = block_with_senders(child_header(5, parent_header().hash, 0), vec![]);
+        let bws = block_with_senders(
+            child_header(5, hash_header(&parent_header()).unwrap(), 0),
+            vec![],
+        );
         let err = strict.execute(&bws).unwrap_err();
         assert!(matches!(err, ExecutionError::InvalidBlockNumber { .. }));
     }
@@ -315,7 +313,10 @@ mod tests {
     #[test]
     fn basic_validator_accepts_non_contiguous_block_number() {
         let mut pipeline = setup_basic();
-        let bws = block_with_senders(child_header(5, parent_header().hash, 0), vec![]);
+        let bws = block_with_senders(
+            child_header(5, hash_header(&parent_header()).unwrap(), 0),
+            vec![],
+        );
         assert!(pipeline.execute(&bws).is_ok());
     }
 }

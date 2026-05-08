@@ -4,7 +4,7 @@ use crate::error::RlpError;
 use crate::item::RlpItem;
 use crate::traits::{RlpDecodable, RlpEncodable};
 use bytes::{Bytes, BytesMut};
-use types::{AccessListItem, Address, B256, Transaction};
+use types::{AccessListItem, Address, B256, Block, Header, SignedTransaction, Transaction};
 
 fn rlp_roundtrip(item: &RlpItem) -> Result<RlpItem, RlpError> {
     let mut buffer = BytesMut::new();
@@ -266,6 +266,87 @@ mod tests {
         Transaction::from_rlp_item(&rlp_roundtrip(&tx.to_rlp_item()).unwrap()).unwrap()
     }
 
+    fn roundtrip_header(header: &Header) -> Header {
+        Header::from_rlp_item(&rlp_roundtrip(&header.to_rlp_item()).unwrap()).unwrap()
+    }
+
+    fn roundtrip_block(block: &Block) -> Block {
+        Block::from_rlp_item(&rlp_roundtrip(&block.to_rlp_item()).unwrap()).unwrap()
+    }
+
+    fn canonical_header() -> Header {
+        Header {
+            parent_hash: B256::from([0x11; 32]),
+            beneficiary: Address::from([0x22; 20]),
+            state_root: B256::from([0x33; 32]),
+            transactions_root: B256::from([0x44; 32]),
+            gas_limit: 30_000_000,
+            gas_used: 63_000,
+            timestamp: 1_700_000_123,
+            number: 42,
+        }
+    }
+
+    fn signed_transaction(transaction: Transaction, marker: u8) -> SignedTransaction {
+        SignedTransaction {
+            transaction,
+            v: marker as u64,
+            r: B256::from([marker; 32]),
+            s: B256::from([marker.wrapping_add(1); 32]),
+        }
+    }
+
+    fn signed_legacy(marker: u8) -> SignedTransaction {
+        signed_transaction(
+            Transaction::Legacy {
+                nonce: 1,
+                gas_price: 1_000_000_000,
+                gas_limit: 21_000,
+                to: Some(Address::from([0xaa; 20])),
+                value: 10_000,
+                data: vec![0xde, 0xad],
+            },
+            marker,
+        )
+    }
+
+    fn signed_eip1559(marker: u8) -> SignedTransaction {
+        signed_transaction(
+            Transaction::Eip1559 {
+                nonce: 2,
+                gas_limit: 50_000,
+                to: Some(Address::from([0xbb; 20])),
+                value: 20_000,
+                data: vec![0xbe, 0xef],
+                max_fee_per_gas: 3_000_000_000,
+                max_priority_fee_per_gas: 1_000_000_000,
+                access_list: vec![AccessListItem {
+                    address: Address::from([0xcc; 20]),
+                    storage_keys: vec![B256::from([0x01; 32])],
+                }],
+            },
+            marker,
+        )
+    }
+
+    fn signed_eip4844(marker: u8) -> SignedTransaction {
+        signed_transaction(
+            Transaction::Eip4844 {
+                nonce: 3,
+                gas_limit: 80_000,
+                to: None,
+                value: 30_000,
+                data: vec![0xca, 0xfe],
+                max_fee_per_gas: 4_000_000_000,
+                max_priority_fee_per_gas: 2_000_000_000,
+                access_list: vec![],
+                max_fee_per_blob_gas: 5_000_000,
+                blob_versioned_hashes: vec![B256::from([0xdd; 32])],
+            },
+            marker,
+        )
+    }
+
     fn assert_tx_eq(a: &Transaction, b: &Transaction) {
         match (a, b) {
             (
@@ -492,5 +573,44 @@ mod tests {
             blob_versioned_hashes: vec![B256::from([0xbb; 32])],
         };
         assert_tx_eq(&roundtrip_tx(&eip4844), &eip4844);
+    }
+
+    #[test]
+    fn test_roundtrip_header() {
+        let header = canonical_header();
+        let decoded = roundtrip_header(&header);
+
+        assert_eq!(decoded, header);
+    }
+
+    #[test]
+    fn test_roundtrip_block_with_mixed_signed_transactions() {
+        let block = Block {
+            header: canonical_header(),
+            transactions: vec![
+                signed_legacy(0x01),
+                signed_eip1559(0x02),
+                signed_eip4844(0x03),
+            ],
+        };
+
+        let decoded = roundtrip_block(&block);
+
+        assert_eq!(decoded, block);
+        assert_eq!(decoded.header(), &block.header);
+        assert_eq!(decoded.transactions(), block.transactions.as_slice());
+    }
+
+    #[test]
+    fn test_roundtrip_block_with_empty_transaction_list() {
+        let block = Block {
+            header: canonical_header(),
+            transactions: vec![],
+        };
+
+        let decoded = roundtrip_block(&block);
+
+        assert_eq!(decoded, block);
+        assert_eq!(decoded.transactions().len(), 0);
     }
 }

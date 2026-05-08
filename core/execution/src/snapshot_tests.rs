@@ -1,8 +1,8 @@
-use bytes::{Bytes, BytesMut};
+use bytes::BytesMut;
 use rlp_codec::{RlpEncodable, RlpItem, encode};
-use types::{Address, B256, Bloom, Transaction};
+use types::{Address, B256, Block, Bloom, Header, Transaction};
 
-use crate::primitives::{Block, Header, Log, Receipt};
+use crate::primitives::{Log, Receipt};
 
 fn address(byte: u8) -> Address {
     Address::new([byte; 20])
@@ -14,16 +14,14 @@ fn hash(byte: u8) -> B256 {
 
 fn header() -> Header {
     Header {
-        block_number: 42,
         parent_hash: hash(0x11),
+        beneficiary: address(0x99),
         state_root: hash(0x22),
         transactions_root: hash(0x33),
-        receipts_root: hash(0x44),
-        logs_bloom: Bloom::zero(),
         gas_limit: 30_000_000,
         gas_used: 42_000,
-        base_fee_per_gas: 1_000_000_000,
-        hash: hash(0xaa),
+        timestamp: 123_456,
+        number: 42,
     }
 }
 
@@ -76,16 +74,14 @@ fn encode_item_to_hex(item: &RlpItem) -> String {
 
 fn header_rlp_item(header: &Header) -> RlpItem {
     RlpItem::List(vec![
-        header.block_number.to_rlp_item(),
         header.parent_hash.to_rlp_item(),
+        header.beneficiary.to_rlp_item(),
         header.state_root.to_rlp_item(),
         header.transactions_root.to_rlp_item(),
-        header.receipts_root.to_rlp_item(),
-        RlpItem::Bytes(Bytes::copy_from_slice(header.logs_bloom.as_ref())),
         header.gas_limit.to_rlp_item(),
         header.gas_used.to_rlp_item(),
-        header.base_fee_per_gas.to_rlp_item(),
-        header.hash.to_rlp_item(),
+        header.timestamp.to_rlp_item(),
+        header.number.to_rlp_item(),
     ])
 }
 

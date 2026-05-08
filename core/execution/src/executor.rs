@@ -1,15 +1,13 @@
-use types::{Address, B256, Bloom, Transaction};
+use types::{Account, Address, B256, Block, Bloom, Transaction};
 
 use crate::{
-    error::ExecutionError,
-    in_memory::InMemoryProvider,
-    primitives::{AccountInfo, Block, Receipt},
+    error::ExecutionError, in_memory::InMemoryProvider, primitives::Receipt,
     providers::StateProvider,
 };
 
 use bytes::BytesMut;
 use rlp_codec::{
-    RlpEncodable, RlpItem, encode,
+    RlpEncodable, RlpItem, encode, hash_header, signed_transaction_hash,
     trie::{MerkleTrie, TrieError},
 };
 
@@ -67,6 +65,8 @@ impl BlockExecutor for ValueTransferExecutor {
         let mut cumulative_gas_used: u64 = 0;
         let mut receipts = vec![];
         let mut logs_bloom: Bloom = Bloom::zero();
+        let block_hash = hash_header(&block_with_senders.block.header)?;
+        let base_fee_per_gas = block_with_senders.block.header.gas_limit as u128 / 2;
         for (i, (signed_tx, sender)) in block_with_senders
             .block
             .transactions
@@ -116,7 +116,7 @@ impl BlockExecutor for ValueTransferExecutor {
                     }
                     let effective_gas_price = signed_tx
                         .transaction
-                        .effective_gas_price(block_with_senders.block.header.base_fee_per_gas)?;
+                        .effective_gas_price(base_fee_per_gas)?;
 
                     account.balance = account
                         .balance
@@ -138,9 +138,7 @@ impl BlockExecutor for ValueTransferExecutor {
                     if let Some(recipient_address) = to {
                         let mut recipient =
                             state.get_account(*recipient_address).or_else(|e| match e {
-                                ExecutionError::AccountNotFound { .. } => {
-                                    Ok(AccountInfo::default())
-                                }
+                                ExecutionError::AccountNotFound { .. } => Ok(Account::default()),
                                 other => Err(other),
                             })?;
                         recipient.balance = recipient
@@ -156,10 +154,10 @@ impl BlockExecutor for ValueTransferExecutor {
                         .checked_add(gas_used)
                         .ok_or(ExecutionError::Overflow)?;
                     let receipt = Receipt {
-                        transaction_hash: signed_tx.hash()?,
+                        transaction_hash: signed_transaction_hash(signed_tx)?,
                         transaction_index: i as u64,
-                        block_hash: block_with_senders.block.header.hash,
-                        block_number: block_with_senders.block.header.block_number,
+                        block_hash,
+                        block_number: block_with_senders.block.header.number,
                         from: *sender,
                         to: *to,
                         contract_address: None,
@@ -184,14 +182,12 @@ impl BlockExecutor for ValueTransferExecutor {
                 } => {
                     let effective_gas_price = signed_tx
                         .transaction
-                        .effective_gas_price(block_with_senders.block.header.base_fee_per_gas)?;
+                        .effective_gas_price(base_fee_per_gas)?;
 
                     if let Some(recipient_address) = to {
                         let mut recipient =
                             state.get_account(*recipient_address).or_else(|e| match e {
-                                ExecutionError::AccountNotFound { .. } => {
-                                    Ok(AccountInfo::default())
-                                }
+                                ExecutionError::AccountNotFound { .. } => Ok(Account::default()),
                                 other => Err(other),
                             })?;
                         recipient.balance = recipient
@@ -203,10 +199,10 @@ impl BlockExecutor for ValueTransferExecutor {
                         todo!()
                     }
                     let receipt = Receipt {
-                        transaction_hash: signed_tx.hash()?,
+                        transaction_hash: signed_transaction_hash(signed_tx)?,
                         transaction_index: i as u64,
-                        block_hash: block_with_senders.block.header.hash,
-                        block_number: block_with_senders.block.header.block_number,
+                        block_hash,
+                        block_number: block_with_senders.block.header.number,
                         from: *from,
                         to: *to,
                         contract_address: None,

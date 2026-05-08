@@ -1,9 +1,8 @@
-use rlp_codec::signing::SignedTransaction;
-use types::{Address, B256};
+use types::{Account, Address, B256, Block, Header, SignedTransaction};
 
 use crate::{
     error::ExecutionError,
-    primitives::{AccountInfo, Block, BlockNumber, Header, Receipt},
+    primitives::{BlockNumber, Receipt},
 };
 
 // a component that only needs headers should not be forced to depend on receipt logic;
@@ -22,7 +21,7 @@ pub trait HeaderProvider {
 }
 
 pub trait StateProvider {
-    fn get_account(&self, address: Address) -> Result<AccountInfo, ExecutionError>;
+    fn get_account(&self, address: Address) -> Result<Account, ExecutionError>;
     fn get_balance(&self, address: Address) -> Result<u128, ExecutionError> {
         let account_info = self.get_account(address)?;
         Ok(account_info.balance)
@@ -30,10 +29,6 @@ pub trait StateProvider {
     fn get_nonce(&self, address: Address) -> Result<u64, ExecutionError> {
         let account_info = self.get_account(address)?;
         Ok(account_info.nonce)
-    }
-    fn get_code(&self, address: Address) -> Result<Option<Vec<u8>>, ExecutionError> {
-        let account_info = self.get_account(address)?;
-        Ok(account_info.code)
     }
     fn get_storage(&self, address: Address, slot: B256) -> Result<B256, ExecutionError>;
 }

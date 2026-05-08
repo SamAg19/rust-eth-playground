@@ -74,7 +74,9 @@
 use crate::error::RlpError;
 use crate::item::RlpItem;
 use bytes::Bytes;
-use types::{AccessListItem, Address, B256, Bloom, Transaction};
+use types::{
+    AccessListItem, Account, Address, B256, Block, Bloom, Header, SignedTransaction, Transaction,
+};
 
 pub trait RlpEncodable {
     fn to_rlp_item(&self) -> RlpItem;
@@ -197,7 +199,7 @@ impl RlpEncodable for Bloom {
 impl RlpDecodable for Bloom {
     fn from_rlp_item(item: &RlpItem) -> Result<Self, RlpError>
     where
-        Self: Sized
+        Self: Sized,
     {
         match item {
             RlpItem::Bytes(x) => {
@@ -482,6 +484,162 @@ impl RlpDecodable for Transaction {
                 })
             }
             _ => Err(RlpError::UnexpectedType(u8::MAX)),
+        }
+    }
+}
+
+impl RlpEncodable for Header {
+    fn to_rlp_item(&self) -> RlpItem {
+        RlpItem::List(vec![
+            self.parent_hash.to_rlp_item(),
+            self.beneficiary.to_rlp_item(),
+            self.state_root.to_rlp_item(),
+            self.transactions_root.to_rlp_item(),
+            self.gas_limit.to_rlp_item(),
+            self.gas_used.to_rlp_item(),
+            self.timestamp.to_rlp_item(),
+            self.number.to_rlp_item(),
+        ])
+    }
+}
+
+impl RlpDecodable for Header {
+    fn from_rlp_item(item: &RlpItem) -> Result<Self, RlpError>
+    where
+        Self: Sized,
+    {
+        match item {
+            RlpItem::Bytes(_) => Err(RlpError::UnexpectedType(0x80)),
+            RlpItem::List(x) => {
+                if x.len() != 8 {
+                    return Err(RlpError::InvalidLength(x.len()));
+                }
+
+                Ok(Self {
+                    parent_hash: B256::from_rlp_item(&x[0])?,
+                    beneficiary: Address::from_rlp_item(&x[1])?,
+                    state_root: B256::from_rlp_item(&x[2])?,
+                    transactions_root: B256::from_rlp_item(&x[3])?,
+                    gas_limit: u64::from_rlp_item(&x[4])?,
+                    gas_used: u64::from_rlp_item(&x[5])?,
+                    timestamp: u64::from_rlp_item(&x[6])?,
+                    number: u64::from_rlp_item(&x[7])?,
+                })
+            }
+        }
+    }
+}
+
+impl RlpEncodable for SignedTransaction {
+    fn to_rlp_item(&self) -> RlpItem {
+        RlpItem::List(vec![
+            self.transaction.to_rlp_item(),
+            self.v.to_rlp_item(),
+            self.r.to_rlp_item(),
+            self.s.to_rlp_item(),
+        ])
+    }
+}
+
+impl RlpDecodable for SignedTransaction {
+    fn from_rlp_item(item: &RlpItem) -> Result<Self, RlpError>
+    where
+        Self: Sized,
+    {
+        match item {
+            RlpItem::Bytes(_) => Err(RlpError::UnexpectedType(0x80)),
+            RlpItem::List(x) => {
+                if x.len() != 4 {
+                    return Err(RlpError::InvalidLength(x.len()));
+                }
+
+                Ok(Self {
+                    transaction: Transaction::from_rlp_item(&x[0])?,
+                    v: u64::from_rlp_item(&x[1])?,
+                    r: B256::from_rlp_item(&x[2])?,
+                    s: B256::from_rlp_item(&x[3])?,
+                })
+            }
+        }
+    }
+}
+
+impl RlpEncodable for Block {
+    fn to_rlp_item(&self) -> RlpItem {
+        let mut fields = vec![];
+        fields.push(self.header.to_rlp_item());
+        let tx_list: Vec<RlpItem> = self
+            .transactions
+            .iter()
+            .map(|tx| tx.to_rlp_item())
+            .collect();
+
+        fields.push(RlpItem::List(tx_list));
+        RlpItem::List(fields)
+    }
+}
+
+impl RlpDecodable for Block {
+    fn from_rlp_item(item: &RlpItem) -> Result<Self, RlpError>
+    where
+        Self: Sized,
+    {
+        match item {
+            RlpItem::Bytes(_) => Err(RlpError::UnexpectedType(0x80)),
+            RlpItem::List(x) => {
+                if x.len() != 2 {
+                    return Err(RlpError::InvalidLength(x.len()));
+                }
+                let header = Header::from_rlp_item(&x[0])?;
+                let transactions = match &x[1] {
+                    RlpItem::Bytes(_) => return Err(RlpError::UnexpectedType(0x80)),
+                    RlpItem::List(x) => {
+                        let mut signed_tx = vec![];
+                        for signed_tx_item in x {
+                            let tx = SignedTransaction::from_rlp_item(signed_tx_item)?;
+                            signed_tx.push(tx);
+                        }
+                        signed_tx
+                    }
+                };
+
+                Ok(Self {
+                    header,
+                    transactions,
+                })
+            }
+        }
+    }
+}
+
+impl RlpEncodable for Account {
+    fn to_rlp_item(&self) -> RlpItem {
+        RlpItem::List(vec![
+            self.balance.to_rlp_item(),
+            self.nonce.to_rlp_item(),
+            self.code_hash.to_rlp_item(),
+        ])
+    }
+}
+
+impl RlpDecodable for Account {
+    fn from_rlp_item(item: &RlpItem) -> Result<Self, RlpError>
+    where
+        Self: Sized,
+    {
+        match item {
+            RlpItem::Bytes(_) => Err(RlpError::UnexpectedType(0x80)),
+            RlpItem::List(x) => {
+                if x.len() != 3 {
+                    return Err(RlpError::InvalidLength(x.len()));
+                }
+
+                Ok(Self {
+                    balance: u128::from_rlp_item(&x[0])?,
+                    nonce: u64::from_rlp_item(&x[0])?,
+                    code_hash: B256::from_rlp_item(&x[0])?,
+                })
+            }
         }
     }
 }

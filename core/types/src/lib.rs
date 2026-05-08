@@ -1,20 +1,30 @@
 #[macro_use]
 mod macros;
 
+pub mod account;
 pub mod address;
 pub mod b256;
+pub mod block;
 pub mod bloom;
+pub mod constant;
 pub mod error;
+pub mod genesis;
+pub mod header;
 pub mod opcode;
 #[cfg(any(feature = "test-utils", test))]
 pub mod test_helpers;
 pub mod transaction;
 pub mod transaction_error;
 
+pub use account::Account;
 pub use address::Address;
 pub use b256::B256;
+pub use block::{Block, SignedTransaction};
 pub use bloom::Bloom;
+pub use constant::GAS_LIMIT_PER_BLOCK;
 pub use error::ParseError;
+pub use genesis::{GenesisAccount, GenesisConfig};
+pub use header::Header;
 pub use opcode::{Opcode, OpcodeError};
 pub use transaction::{AccessListItem, Transaction, TransactionSummary};
 pub use transaction_error::{DecodeError, TransactionError};

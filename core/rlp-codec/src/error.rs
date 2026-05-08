@@ -14,5 +14,5 @@ pub enum RlpError {
     #[error("RLP encoding overflow")]
     Overflow,
     #[error(transparent)]
-    Transaction(#[from] TransactionError)
+    Transaction(#[from] TransactionError),
 }
