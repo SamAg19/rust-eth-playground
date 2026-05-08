@@ -2,6 +2,22 @@ use crate::error::RlpError;
 use crate::item::RlpItem;
 use bytes::{BufMut, BytesMut};
 
+pub fn encoded_len(item: &RlpItem) -> usize {
+    match item {
+        RlpItem::Bytes(data) => {
+            if data.len() == 1 && data[0] < 0x80 {
+                1
+            } else {
+                length_prefix_len(data.len()) + data.len()
+            }
+        }
+        RlpItem::List(items) => {
+            let payload_len = items.iter().map(encoded_len).sum::<usize>();
+            list_prefix_len(payload_len) + payload_len
+        }
+    }
+}
+
 pub fn encode(item: &RlpItem, buffer: &mut BytesMut) -> Result<(), RlpError> {
     match item {
         RlpItem::Bytes(data) => {
@@ -22,7 +38,8 @@ pub fn encode(item: &RlpItem, buffer: &mut BytesMut) -> Result<(), RlpError> {
             }
         }
         RlpItem::List(items) => {
-            let mut encoded_items = BytesMut::new();
+            let payload_len = items.iter().map(encoded_len).sum();
+            let mut encoded_items = BytesMut::with_capacity(payload_len);
 
             for item in items {
                 encode(item, &mut encoded_items)?;
@@ -61,6 +78,23 @@ fn encode_length(value: usize) -> Vec<u8> {
     bytes
 }
 
+fn length_prefix_len(payload_len: usize) -> usize {
+    if payload_len <= 55 {
+        1
+    } else {
+        1 + encoded_length_len(payload_len)
+    }
+}
+
+fn list_prefix_len(payload_len: usize) -> usize {
+    length_prefix_len(payload_len)
+}
+
+fn encoded_length_len(value: usize) -> usize {
+    let bits = usize::BITS - value.leading_zeros();
+    bits.div_ceil(8) as usize
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -68,9 +102,20 @@ mod tests {
     use bytes::Bytes;
 
     fn encode_to_bytes(item: &RlpItem) -> Bytes {
-        let mut buffer = BytesMut::new();
+        let mut buffer = BytesMut::with_capacity(encoded_len(item));
         encode(item, &mut buffer).unwrap();
         buffer.freeze()
+    }
+
+    #[test]
+    fn encoded_len_matches_encoded_output_len() {
+        let item = RlpItem::List(vec![
+            RlpItem::Bytes(Bytes::from("cat")),
+            RlpItem::Bytes(Bytes::from(vec![0x00; 56])),
+            RlpItem::List(vec![RlpItem::Bytes(Bytes::from("dog"))]),
+        ]);
+
+        assert_eq!(encoded_len(&item), encode_to_bytes(&item).len());
     }
 
     #[test]

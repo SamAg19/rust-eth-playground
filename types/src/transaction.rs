@@ -1,9 +1,10 @@
 use crate::address::Address;
 use crate::b256::B256;
 use crate::transaction_error::TransactionError;
+use serde::{Deserialize, Serialize};
 use std::cmp::min;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AccessListItem {
     pub address: Address,
     pub storage_keys: Vec<B256>,
@@ -14,7 +15,7 @@ pub struct AccessListItem {
 // to
 // value
 // data
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Transaction {
     Legacy {
         nonce: u64,
@@ -201,7 +202,6 @@ pub fn summarise_transactions(txs: &[Transaction]) -> Result<TransactionSummary,
 }
 
 #[cfg(test)]
-
 mod tests {
     use super::*;
 
@@ -262,7 +262,7 @@ mod tests {
             blob_versioned_hashes: vec![],
         };
 
-        assert_eq!(create_tx.is_create().unwrap(), true);
+        assert!(create_tx.is_create().unwrap());
 
         let non_create_tx = Transaction::Eip4844 {
             nonce: 0,
@@ -277,7 +277,7 @@ mod tests {
             blob_versioned_hashes: vec![],
         };
 
-        assert_eq!(non_create_tx.is_create().unwrap(), false);
+        assert!(!non_create_tx.is_create().unwrap());
     }
 
     #[test]

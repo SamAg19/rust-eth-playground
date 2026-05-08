@@ -1,2 +1,4 @@
 target/
 docs/
+dhat-heap.json
+**/snapshots/

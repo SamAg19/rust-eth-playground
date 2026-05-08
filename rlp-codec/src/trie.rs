@@ -40,7 +40,7 @@ pub struct MerkleTrie {
 }
 
 fn bytes_to_nibbles(bytes: &[u8]) -> Vec<u8> {
-    let mut nibbles = vec![];
+    let mut nibbles = Vec::with_capacity(bytes.len() * 2);
 
     for byte in bytes {
         let high_nibble = byte >> 4;
@@ -154,7 +154,7 @@ fn hp_encode(nibbles: &[u8], is_leaf: bool) -> Vec<u8> {
     hp_encoding
 }
 
-fn recursive_insert(slot: &mut Option<TrieNode>, nibbles: &[u8], new_value: &Vec<u8>) {
+fn recursive_insert(slot: &mut Option<TrieNode>, nibbles: &[u8], new_value: &[u8]) {
     match slot.take() {
         None => {
             *slot = Some(TrieNode::Leaf {
@@ -170,7 +170,7 @@ fn recursive_insert(slot: &mut Option<TrieNode>, nibbles: &[u8], new_value: &Vec
                 if *nibbles == remaining_nibbles {
                     *slot = Some(TrieNode::Leaf {
                         remaining_nibbles: nibbles.to_vec(),
-                        value: new_value.clone(),
+                        value: new_value.to_vec(),
                     });
                     return;
                 }
@@ -260,7 +260,7 @@ fn recursive_insert(slot: &mut Option<TrieNode>, nibbles: &[u8], new_value: &Vec
                     let mut children: [Option<TrieNode>; 16] = [const { None }; 16];
 
                     if nibbles.len() == shared_prefix_len {
-                        branch_value = Some(new_value.clone());
+                        branch_value = Some(new_value.to_vec());
                     } else {
                         let new_child_index = nibbles[shared_prefix_len] as usize;
                         let new_leaf = TrieNode::Leaf {

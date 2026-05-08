@@ -58,10 +58,7 @@ mod tests {
             "Invalid structure: Invalid RLP encoding"
         );
 
-        let other_error = DecodeError::Other(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "IO error",
-        )));
+        let other_error = DecodeError::Other(Box::new(std::io::Error::other("IO error")));
         assert_eq!(other_error.to_string(), "IO error");
     }
 

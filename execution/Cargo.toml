@@ -8,6 +8,13 @@ thiserror = "2.0.18"
 bytes = "1.11.1"
 types = { path = "../types", features = [] }
 rlp-codec = { path = "../rlp-codec", features = [] }
+serde = { version = "1.0.228", features = ["derive"] }
 
 [features]
 optimism=["types/optimism", "rlp-codec/optimism"]
+test-utils=[]
+
+[dev-dependencies]
+insta = { version = "1.47.2", features = ["json"] }
+proptest = "1.11.0"
+serde_json = "1.0.149"

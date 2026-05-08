@@ -1,12 +1,13 @@
 use bytes::{BufMut, Bytes, BytesMut};
 use k256::ecdsa::{RecoveryId, Signature, SigningKey, VerifyingKey};
+use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
 use thiserror::Error;
 use types::{Address, B256, Transaction};
 
 use crate::{RlpEncodable, RlpError, RlpItem, encode};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SignedTransaction {
     pub transaction: Transaction,
     pub v: u64,
@@ -578,9 +579,9 @@ mod tests {
         let signed = sign(&legacy_tx(), &TEST_PRIVATE_KEY, 1).unwrap();
         let expected = address_from_private_key(&TEST_PRIVATE_KEY);
 
-        match recover_sender(&signed, 137) {
-            Ok(addr) => assert_ne!(addr, expected),
-            Err(_) => {} // also acceptable
+        // An outright recovery error is also acceptable here.
+        if let Ok(addr) = recover_sender(&signed, 137) {
+            assert_ne!(addr, expected);
         }
     }
 
@@ -592,9 +593,8 @@ mod tests {
         let signed = sign(&eip1559_tx(), &TEST_PRIVATE_KEY, 1).unwrap();
         let expected = address_from_private_key(&TEST_PRIVATE_KEY);
 
-        match recover_sender(&signed, 137) {
-            Ok(addr) => assert_ne!(addr, expected),
-            Err(_) => {}
+        if let Ok(addr) = recover_sender(&signed, 137) {
+            assert_ne!(addr, expected);
         }
     }
 

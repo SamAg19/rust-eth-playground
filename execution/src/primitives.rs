@@ -1,9 +1,10 @@
 use rlp_codec::signing::SignedTransaction;
+use serde::{Deserialize, Serialize};
 use types::{Address, B256, Bloom};
 
 pub type BlockNumber = u64;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Header {
     pub block_number: BlockNumber,
     pub parent_hash: B256,
@@ -17,20 +18,20 @@ pub struct Header {
     pub hash: B256,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Block {
     pub header: Header,
     pub transactions: Vec<SignedTransaction>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Log {
     pub address: Address,
     pub topics: Vec<B256>,
     pub data: Vec<u8>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Receipt {
     pub transaction_hash: B256,
     pub transaction_index: u64,
@@ -47,7 +48,7 @@ pub struct Receipt {
     pub logs_bloom: Bloom,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AccountInfo {
     pub balance: u128,
     pub nonce: u64,

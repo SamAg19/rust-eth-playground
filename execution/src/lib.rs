@@ -8,4 +8,8 @@ pub mod providers;
 pub mod validator;
 
 #[cfg(test)]
+mod snapshot_tests;
+#[cfg(any(test, feature = "test-utils"))]
+pub mod test_harness;
+#[cfg(test)]
 pub(crate) mod test_helpers;

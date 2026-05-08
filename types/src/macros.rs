@@ -96,6 +96,25 @@ macro_rules! byte_array_newtype_impls {
             }
         }
 
+        impl serde::Serialize for $name {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                serde::Serialize::serialize(self.0.as_slice(), serializer)
+            }
+        }
+
+        impl<'de> serde::Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                let bytes = <Vec<u8> as serde::Deserialize>::deserialize(deserializer)?;
+                Self::try_from(bytes.as_slice()).map_err(serde::de::Error::custom)
+            }
+        }
+
         impl TryFrom<&[u8]> for $name {
             type Error = error::ParseError;
             fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
