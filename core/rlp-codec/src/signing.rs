@@ -126,13 +126,7 @@ fn typed_to_wire(signed_tx: &SignedTransaction) -> Result<Bytes, RlpError> {
         _ => unreachable!("typed_to_encoded_bytes called with Legacy tx"),
     }
 
-    let tx_type = match &signed_tx.transaction {
-        Transaction::Legacy { .. } => 0x00,
-        Transaction::Eip1559 { .. } => 0x02,
-        Transaction::Eip4844 { .. } => 0x03,
-        #[cfg(feature = "optimism")]
-        Transaction::Deposit { .. } => 0x7e,
-    };
+    let tx_type = signed_tx.transaction.tx_type()?;
 
     let mut buffer = BytesMut::new();
     buffer.put_u8(tx_type);
@@ -261,13 +255,7 @@ fn typed_to_encoded_bytes(tx: &Transaction, chain_id: u64) -> Result<Bytes, RlpE
         _ => unreachable!("typed_to_encoded_bytes called with Legacy tx"),
     }
 
-    let tx_type = match tx {
-        Transaction::Legacy { .. } => 0x00,
-        Transaction::Eip1559 { .. } => 0x02,
-        Transaction::Eip4844 { .. } => 0x03,
-        #[cfg(feature = "optimism")]
-        Transaction::Deposit { .. } => 0x7e,
-    };
+    let tx_type = tx.tx_type()?;
 
     let mut buffer = BytesMut::new();
     buffer.put_u8(tx_type);

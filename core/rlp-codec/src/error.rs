@@ -1,4 +1,5 @@
 use thiserror::Error;
+use types::TransactionError;
 
 #[derive(Debug, Error)]
 pub enum RlpError {
@@ -12,4 +13,6 @@ pub enum RlpError {
     UnexpectedType(u8),
     #[error("RLP encoding overflow")]
     Overflow,
+    #[error(transparent)]
+    Transaction(#[from] TransactionError)
 }

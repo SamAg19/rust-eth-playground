@@ -4,7 +4,7 @@ use crate::transaction_error::TransactionError;
 use serde::{Deserialize, Serialize};
 use std::cmp::min;
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AccessListItem {
     pub address: Address,
     pub storage_keys: Vec<B256>,
@@ -15,7 +15,7 @@ pub struct AccessListItem {
 // to
 // value
 // data
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Transaction {
     Legacy {
         nonce: u64,
@@ -63,8 +63,8 @@ impl Transaction {
     pub fn tx_type(&self) -> Result<u8, TransactionError> {
         match self {
             Transaction::Legacy { .. } => Ok(0),
-            Transaction::Eip1559 { .. } => Ok(1),
-            Transaction::Eip4844 { .. } => Ok(2),
+            Transaction::Eip1559 { .. } => Ok(2),
+            Transaction::Eip4844 { .. } => Ok(3),
             #[cfg(feature = "optimism")]
             Transaction::Deposit { .. } => Ok(0x7e),
         }
@@ -152,6 +152,7 @@ impl Transaction {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransactionSummary {
     pub total_value: u128,
     pub total_gas_limit: u64,
@@ -229,7 +230,7 @@ mod tests {
             access_list: vec![],
         };
 
-        assert_eq!(eip1559_tx.tx_type().unwrap(), 1);
+        assert_eq!(eip1559_tx.tx_type().unwrap(), 2);
 
         let eip4844_tx = Transaction::Eip4844 {
             nonce: 0,
@@ -244,7 +245,7 @@ mod tests {
             blob_versioned_hashes: vec![],
         };
 
-        assert_eq!(eip4844_tx.tx_type().unwrap(), 2);
+        assert_eq!(eip4844_tx.tx_type().unwrap(), 3);
     }
 
     #[test]

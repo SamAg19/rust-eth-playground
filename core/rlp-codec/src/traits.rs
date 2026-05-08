@@ -74,7 +74,7 @@
 use crate::error::RlpError;
 use crate::item::RlpItem;
 use bytes::Bytes;
-use types::{AccessListItem, Address, B256, Transaction};
+use types::{AccessListItem, Address, B256, Bloom, Transaction};
 
 pub trait RlpEncodable {
     fn to_rlp_item(&self) -> RlpItem;
@@ -183,6 +183,27 @@ impl RlpDecodable for Vec<u8> {
     {
         match item {
             RlpItem::Bytes(x) => Ok(x.to_vec()),
+            RlpItem::List(_) => Err(RlpError::UnexpectedType(0xc0)),
+        }
+    }
+}
+
+impl RlpEncodable for Bloom {
+    fn to_rlp_item(&self) -> RlpItem {
+        RlpItem::Bytes(Bytes::copy_from_slice(&self.as_bytes()[..]))
+    }
+}
+
+impl RlpDecodable for Bloom {
+    fn from_rlp_item(item: &RlpItem) -> Result<Self, RlpError>
+    where
+        Self: Sized
+    {
+        match item {
+            RlpItem::Bytes(x) => {
+                let arr = Bloom::try_from(&x[..]).map_err(|_| RlpError::InvalidLength(x.len()))?;
+                Ok(arr)
+            }
             RlpItem::List(_) => Err(RlpError::UnexpectedType(0xc0)),
         }
     }
