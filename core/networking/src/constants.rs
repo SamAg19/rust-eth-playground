@@ -1,0 +1,9 @@
+pub const MSG_PING: u8 = 0x00;
+pub const MSG_PONG: u8 = 0x01;
+pub const MSG_STATUS: u8 = 0x02;
+pub const MSG_TRANSACTIONS: u8 = 0x03;
+pub const MSG_GET_BLOCK_HEADERS: u8 = 0x04;
+pub const MSG_NEW_BLOCK: u8 = 0x07;
+pub const MSG_NEW_BLOCK_HASHES: u8 = 0x08;
+pub const MSG_BLOCK_HEADERS: u8 = 0x09;
+pub const MSG_DISCONNECT: u8 = 0x0a;

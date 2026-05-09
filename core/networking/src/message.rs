@@ -1,5 +1,15 @@
+use bytes::Bytes;
 use rlp_codec::{RlpDecodable, RlpEncodable, RlpError, RlpItem};
-use types::{B256, Transaction};
+use std::str;
+use types::{B256, Block, Header, Transaction};
+
+use crate::{
+    chain::BlockAnnouncement,
+    constants::{
+        MSG_BLOCK_HEADERS, MSG_DISCONNECT, MSG_GET_BLOCK_HEADERS, MSG_NEW_BLOCK,
+        MSG_NEW_BLOCK_HASHES, MSG_PING, MSG_PONG, MSG_STATUS, MSG_TRANSACTIONS,
+    },
+};
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -17,13 +27,20 @@ pub enum Message {
         start_hash: B256,
         count: u64,
     },
+    NewBlock {
+        block: Block,
+        td: u128,
+    },
+    NewBlockHashes {
+        new_blocks: Vec<BlockAnnouncement>,
+    },
+    BlockHeaders {
+        headers: Vec<Header>,
+    },
+    Disconnect {
+        reason: String,
+    },
 }
-
-pub const MSG_PING: u8 = 0x00;
-pub const MSG_PONG: u8 = 0x01;
-pub const MSG_STATUS: u8 = 0x02;
-pub const MSG_TRANSACTIONS: u8 = 0x03;
-pub const MSG_GET_BLOCK_HEADERS: u8 = 0x04;
 
 impl RlpEncodable for Message {
     fn to_rlp_item(&self) -> RlpItem {
@@ -70,6 +87,38 @@ impl RlpEncodable for Message {
                 fields.push(count.to_rlp_item());
 
                 RlpItem::List(fields)
+            }
+            Message::NewBlock { block, td } => {
+                let tag = MSG_NEW_BLOCK as u64;
+                RlpItem::List(vec![
+                    tag.to_rlp_item(),
+                    block.to_rlp_item(),
+                    td.to_rlp_item(),
+                ])
+            }
+            Message::NewBlockHashes { new_blocks } => {
+                let tag = MSG_NEW_BLOCK_HASHES as u64;
+                let mut block_vector = vec![];
+                for new_block in new_blocks {
+                    block_vector.push(new_block.to_rlp_item());
+                }
+                RlpItem::List(vec![tag.to_rlp_item(), RlpItem::List(block_vector)])
+            }
+            Message::BlockHeaders { headers } => {
+                let tag = MSG_BLOCK_HEADERS as u64;
+                let mut headers_vector = vec![];
+                for header in headers {
+                    headers_vector.push(header.to_rlp_item());
+                }
+                RlpItem::List(vec![tag.to_rlp_item(), RlpItem::List(headers_vector)])
+            }
+            Message::Disconnect { reason } => {
+                let tag = MSG_DISCONNECT as u64;
+
+                RlpItem::List(vec![
+                    tag.to_rlp_item(),
+                    RlpItem::Bytes(Bytes::from(reason.clone())),
+                ])
             }
         }
     }
@@ -136,6 +185,69 @@ impl RlpDecodable for Message {
                         Ok(Message::GetBlockHeaders {
                             start_hash: B256::from_rlp_item(&x[1])?,
                             count: u64::from_rlp_item(&x[2])?,
+                        })
+                    }
+                    MSG_NEW_BLOCK => {
+                        if x.len() != 3 {
+                            return Err(RlpError::InvalidLength(x.len()));
+                        }
+
+                        Ok(Message::NewBlock {
+                            block: Block::from_rlp_item(&x[1])?,
+                            td: u128::from_rlp_item(&x[2])?,
+                        })
+                    }
+                    MSG_NEW_BLOCK_HASHES => {
+                        if x.len() != 2 {
+                            return Err(RlpError::InvalidLength(x.len()));
+                        }
+
+                        let mut new_blocks = vec![];
+                        match &x[1] {
+                            RlpItem::Bytes(_) => return Err(RlpError::UnexpectedType(0x80)),
+                            RlpItem::List(blocks_rlp) => {
+                                for block in blocks_rlp {
+                                    new_blocks.push(BlockAnnouncement::from_rlp_item(block)?);
+                                }
+                            }
+                        }
+
+                        Ok(Message::NewBlockHashes { new_blocks })
+                    }
+                    MSG_BLOCK_HEADERS => {
+                        if x.len() != 2 {
+                            return Err(RlpError::InvalidLength(x.len()));
+                        }
+
+                        let mut headers = vec![];
+                        match &x[1] {
+                            RlpItem::Bytes(_) => return Err(RlpError::UnexpectedType(0x80)),
+                            RlpItem::List(blocks_rlp) => {
+                                for block in blocks_rlp {
+                                    headers.push(Header::from_rlp_item(block)?);
+                                }
+                            }
+                        }
+
+                        Ok(Message::BlockHeaders { headers })
+                    }
+                    MSG_DISCONNECT => {
+                        if x.len() != 2 {
+                            return Err(RlpError::InvalidLength(x.len()));
+                        }
+
+                        let reason = match &x[1] {
+                            RlpItem::List(_) => return Err(RlpError::UnexpectedType(0xc0)),
+                            RlpItem::Bytes(b) => {
+                                let bytes_to_string = str::from_utf8(b);
+                                match bytes_to_string {
+                                    Err(_) => return Err(RlpError::InvalidString),
+                                    Ok(s) => s,
+                                }
+                            }
+                        };
+                        Ok(Message::Disconnect {
+                            reason: reason.to_string(),
                         })
                     }
                     _ => Err(RlpError::UnexpectedType(tag)),

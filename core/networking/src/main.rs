@@ -14,6 +14,7 @@ use types::B256;
 #[tokio::main]
 async fn main() {
     let addr = "127.0.0.1:9000";
+    let chain_id: u64 = 1;
 
     let (event_tx, event_rx) = mpsc::channel::<PeerEvent>(128);
 
@@ -48,6 +49,7 @@ async fn main() {
             event_tx_clone,
             listener_shutdown_rx,
             listener_chain_state,
+            chain_id,
         )
         .await
         {

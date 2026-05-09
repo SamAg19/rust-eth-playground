@@ -13,6 +13,8 @@ pub enum RlpError {
     UnexpectedType(u8),
     #[error("RLP encoding overflow")]
     Overflow,
+    #[error("Invalid UTF-8")]
+    InvalidString,
     #[error(transparent)]
     Transaction(#[from] TransactionError),
 }
