@@ -4,7 +4,7 @@ use futures::{SinkExt, StreamExt};
 use networking::{
     codec::EthCodec,
     connection::{ConnectionContext, handle_connection},
-    manager::{ChainState, PeerEvent, PeerId},
+    manager::{PeerEvent, PeerId},
     message::Message,
 };
 use tokio::{
@@ -13,7 +13,7 @@ use tokio::{
     time::timeout,
 };
 use tokio_util::codec::Framed;
-use types::B256;
+use types::{B256, ChainHead};
 
 const CHAIN_ID: u64 = 1;
 const PEER_ID: PeerId = PeerId(7);
@@ -22,9 +22,9 @@ async fn spawn_one_connection_server() -> (std::net::SocketAddr, mpsc::Receiver<
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let (event_tx, event_rx) = mpsc::channel::<PeerEvent>(16);
-    let chain_state = Arc::new(RwLock::new(ChainState {
-        head_block_number: 0,
-        head_hash: B256::zero(),
+    let chain_state = Arc::new(RwLock::new(ChainHead {
+        number: 0,
+        hash: B256::zero(),
         total_difficulty: 0,
     }));
 

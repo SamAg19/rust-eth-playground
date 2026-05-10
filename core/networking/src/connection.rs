@@ -2,7 +2,7 @@ use std::{net::SocketAddr, sync::Arc};
 
 use crate::{
     codec::EthCodec,
-    manager::{ChainState, PeerEvent, PeerId},
+    manager::{PeerEvent, PeerId},
     message::Message,
 };
 use futures::{SinkExt, StreamExt};
@@ -11,6 +11,7 @@ use tokio::{
     sync::{RwLock, mpsc},
 };
 use tokio_util::codec::Framed;
+use types::ChainHead;
 
 #[derive(Debug, Clone)]
 enum HandshakeState {
@@ -24,7 +25,7 @@ pub struct ConnectionContext {
     pub expected_chain_id: u64,
     pub peer_sender: mpsc::Sender<Message>,
     pub event_sender: mpsc::Sender<PeerEvent>,
-    pub chain_state: Arc<RwLock<ChainState>>,
+    pub chain_state: Arc<RwLock<ChainHead>>,
 }
 
 pub async fn handle_connection(
@@ -70,7 +71,7 @@ pub async fn handle_connection(
                                             state.clone()
                                         };
 
-                                        if (framed.send(Message::Status { chain_id: expected_chain_id, head_hash: snapshot.head_hash, total_difficulty: snapshot.total_difficulty }).await).is_err() {
+                                        if (framed.send(Message::Status { chain_id: expected_chain_id, head_hash: snapshot.hash, total_difficulty: snapshot.total_difficulty }).await).is_err() {
                                             break;
                                         }
 

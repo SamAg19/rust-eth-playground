@@ -1,7 +1,7 @@
 use networking::{
     client::connect,
     manager::manage,
-    manager::{ChainState, PeerEvent},
+    manager::PeerEvent,
     server::listen,
 };
 use std::{sync::Arc, time::Duration};
@@ -9,7 +9,7 @@ use tokio::{
     signal,
     sync::{RwLock, broadcast, mpsc},
 };
-use types::B256;
+use types::{B256, ChainHead};
 
 #[tokio::main]
 async fn main() {
@@ -21,9 +21,9 @@ async fn main() {
     let (shutdown_tx, shutdown_rx) = broadcast::channel::<()>(1);
     let listener_shutdown_rx = shutdown_tx.subscribe();
 
-    let chain_state = Arc::new(RwLock::new(ChainState {
-        head_block_number: 0,
-        head_hash: B256::from([0x00; 32]),
+    let chain_state = Arc::new(RwLock::new(ChainHead {
+        number: 0,
+        hash: B256::from([0x00; 32]),
         total_difficulty: 0,
     }));
 

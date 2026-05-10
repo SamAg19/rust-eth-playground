@@ -5,19 +5,20 @@ use crate::codec::EthCodec;
 use crate::connection::{ConnectionContext, handle_connection};
 use crate::manager::{PeerEvent, PeerId};
 use crate::message::Message;
-use crate::{error::NetworkError, manager::ChainState};
+use crate::error::NetworkError;
 use tokio::{
     net::TcpListener,
     sync::{RwLock, broadcast, mpsc},
     task::JoinSet,
 };
 use tokio_util::codec::Framed;
+use types::ChainHead;
 
 pub async fn listen(
     addr: &str,
     sender: mpsc::Sender<PeerEvent>,
     mut shutdown_rx: broadcast::Receiver<()>,
-    chain_state: Arc<RwLock<ChainState>>,
+    chain_state: Arc<RwLock<ChainHead>>,
     chain_id: u64,
 ) -> Result<(), NetworkError> {
     let listener = TcpListener::bind(addr).await?;

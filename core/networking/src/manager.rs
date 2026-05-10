@@ -8,7 +8,7 @@ use tokio::{
     sync::{broadcast, mpsc},
     time,
 };
-use types::B256;
+use types::ChainHead;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PeerId(pub u64);
@@ -35,17 +35,10 @@ pub enum PeerEvent {
     },
 }
 
-#[derive(Clone, Debug)]
-pub struct ChainState {
-    pub head_block_number: u64,
-    pub head_hash: B256,
-    pub total_difficulty: u128,
-}
-
 pub async fn manage(
     mut event_rx: mpsc::Receiver<PeerEvent>,
     mut shutdown_rx: broadcast::Receiver<()>,
-    _chain_state: Arc<RwLock<ChainState>>,
+    _chain_state: Arc<RwLock<ChainHead>>,
 ) {
     let mut peer_map = HashMap::new();
     let mut interval = time::interval(Duration::from_secs(10));

@@ -5,9 +5,9 @@ use tokio::{
 use bytes::BytesMut;
 use execution::{InMemoryProvider, executor::{BlockWithSenders, ValueTransferExecutor}, pipeline::Pipeline, providers::BlockProvider, validator::StrictValidator};
 use networking::PeerId;
-use rlp_codec::{MerkleTrie, RlpEncodable, encode, hash_header, signing::recover_sender};
+use rlp_codec::{RlpEncodable, encode, hash_header, signing::recover_sender};
 use tracing::{debug, info, trace, warn, Instrument};
-use types::{Account, Address, B256, Block};
+use types::{Account, Address, B256, Block, ChainHead};
 
 use crate::errors::ProcessorError;
 
@@ -24,23 +24,6 @@ pub enum ProcessorMessage {
 struct PendingBlock {
     block: Block,
     peer_id: PeerId,
-}
-
-#[derive(Clone, Debug)]
-pub struct ChainHead {
-    pub number: u64,
-    pub hash: B256,
-    pub total_difficulty: u128
-}
-
-impl Default for ChainHead {
-    fn default() -> Self {
-        Self {
-            number: 0,
-            hash: B256::zero(),
-            total_difficulty: 0
-        }
-    }
 }
 
 pub struct Metrics {
@@ -65,7 +48,6 @@ pub struct BlockProcessor {
     pub chain_head: ChainHead,
     pub pipeline: Pipeline<ValueTransferExecutor, StrictValidator>,
     pub accounts: HashMap<Address, Account>,
-    pub trie: MerkleTrie,
     pub shared_head: Arc<RwLock<ChainHead>>,
     pub metrics: Arc<Metrics>
 }
@@ -90,7 +72,6 @@ impl BlockProcessor {
             chain_head,
             pipeline: Pipeline::new(InMemoryProvider::default(), ValueTransferExecutor, StrictValidator { max_txs: 100 }),
             accounts: initial_account,
-            trie: MerkleTrie::new(),
             shared_head,
             metrics
         };
@@ -99,7 +80,6 @@ impl BlockProcessor {
             initial_block_processor.pipeline.provider.set_account(*address,account.clone());
             let mut buffer = BytesMut::new();
             encode(&account.to_rlp_item(), &mut buffer)?;
-            initial_block_processor.trie.insert(address.as_bytes(), buffer.freeze().to_vec())?;
         }
 
         Ok(initial_block_processor)
