@@ -3,9 +3,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::codec::EthCodec;
 use crate::connection::{ConnectionContext, handle_connection};
+use crate::error::NetworkError;
 use crate::manager::{PeerEvent, PeerId};
 use crate::message::Message;
-use crate::error::NetworkError;
 use tokio::{
     net::TcpListener,
     sync::{RwLock, broadcast, mpsc},
@@ -22,6 +22,8 @@ pub async fn listen(
     chain_id: u64,
 ) -> Result<(), NetworkError> {
     let listener = TcpListener::bind(addr).await?;
+    let bound_address = listener.local_addr()?;
+    tracing::info!("listener accepting connections on {}", bound_address);
     let peer_counter = Arc::new(AtomicU64::new(0));
     let mut set: JoinSet<()> = JoinSet::new();
     loop {

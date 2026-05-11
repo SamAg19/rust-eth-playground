@@ -1,7 +1,6 @@
 use networking::{
     client::connect,
-    manager::manage,
-    manager::PeerEvent,
+    manager::{NetworkEvent, PeerEvent, manage},
     server::listen,
 };
 use std::{sync::Arc, time::Duration};
@@ -21,6 +20,8 @@ async fn main() {
     let (shutdown_tx, shutdown_rx) = broadcast::channel::<()>(1);
     let listener_shutdown_rx = shutdown_tx.subscribe();
 
+    let (network_event_tx, mut _network_event_rx) = mpsc::channel::<NetworkEvent>(256);
+
     let chain_state = Arc::new(RwLock::new(ChainHead {
         number: 0,
         hash: B256::from([0x00; 32]),
@@ -28,8 +29,9 @@ async fn main() {
     }));
 
     let manager_chain_state = chain_state.clone();
-    let manager_handle =
-        tokio::spawn(async move { manage(event_rx, shutdown_rx, manager_chain_state).await });
+    let manager_handle = tokio::spawn(async move {
+        manage(event_rx, shutdown_rx, manager_chain_state, network_event_tx).await
+    });
     tokio::spawn(async move {
         match signal::ctrl_c().await {
             Ok(()) => {

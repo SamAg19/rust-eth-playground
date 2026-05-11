@@ -428,6 +428,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "block-builder"
+version = "0.1.0"
+dependencies = [
+ "execution",
+ "rlp-codec",
+ "serde",
+ "thiserror",
+ "types",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1437,6 +1448,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-util",
+ "tracing",
  "types",
 ]
 
@@ -1444,12 +1456,15 @@ dependencies = [
 name = "node"
 version = "0.1.0"
 dependencies = [
+ "block-builder",
  "clap",
  "execution",
+ "futures",
  "networking",
  "processor",
  "rlp-codec",
  "tokio",
+ "tokio-util",
  "tracing",
  "tracing-subscriber",
  "types",

@@ -9,10 +9,13 @@ rlp-codec = { path = "../core/rlp-codec", features = [] }
 networking = { path = "../core/networking", features = [] }
 execution = { path = "../core/execution", features = [] }
 processor = { path = "../processor", features = [] }
+block-builder = { path = "../block-builder", features = [] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["fmt"] }
 tokio = { version = "1.52.3", features = ["full"] }
 clap = { version = "4.6.1", features = ["derive"] }
+tokio-util = { version = "0.7.18", features = ["codec"] }
+futures = "0.3.32"
 
 [features]
 optimism=["types/optimism", "rlp-codec/optimism"]

@@ -12,3 +12,4 @@ tokio-util = { version = "0.7.18", features = ["codec"] }
 types = { path = "../types" }
 rlp-codec = { path = "../rlp-codec" }
 futures = "0.3.32"
+tracing = "0.1.44"

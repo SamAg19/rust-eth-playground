@@ -20,12 +20,12 @@ pub struct InMemoryProvider {
     pub receipts: HashMap<B256, Receipt>,
     pub state: HashMap<Address, Account>,
     pub storage: HashMap<(Address, B256), B256>,
-    journal: Option<StateJournal>
+    journal: Option<StateJournal>,
 }
 
 #[derive(Debug, Default)]
 struct StateJournal {
-    accounts: HashMap<Address, Option<Account>>
+    accounts: HashMap<Address, Option<Account>>,
 }
 
 impl InMemoryProvider {
@@ -57,10 +57,12 @@ impl InMemoryProvider {
     }
 
     pub fn set_account(&mut self, address: Address, info: Account) {
-        if let Some(journal) = &mut self.journal {
-            if !journal.accounts.contains_key(&address) {
-                journal.accounts.insert(address, self.state.get(&address).cloned());
-            }
+        if let Some(journal) = &mut self.journal
+            && !journal.accounts.contains_key(&address)
+        {
+            journal
+                .accounts
+                .insert(address, self.state.get(&address).cloned());
         }
         self.state.insert(address, info);
     }
@@ -70,7 +72,7 @@ impl InMemoryProvider {
     }
 
     pub fn begin_journal(&mut self) -> Result<(), ExecutionError> {
-        if !self.journal.is_none() {
+        if self.journal.is_some() {
             return Err(ExecutionError::JournalAlreadySet);
         }
         let state_journal = StateJournal::default();
@@ -88,7 +90,7 @@ impl InMemoryProvider {
                 match account {
                     None => {
                         self.state.remove(address);
-                    },
+                    }
                     Some(acc) => {
                         self.state.insert(*address, acc.clone());
                     }

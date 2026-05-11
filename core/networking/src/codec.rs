@@ -2,12 +2,13 @@ use bytes::{Buf, BufMut, BytesMut};
 use rlp_codec::{RlpDecodable, RlpEncodable, RlpError, RlpItem, decode, encode};
 use std::str;
 use tokio_util::codec::{Decoder, Encoder};
-use types::{B256, Block, Header, Transaction};
+use types::{Address, B256, Block, Header, Transaction};
 
 use crate::{
     chain::BlockAnnouncement,
     constants::{
-        MSG_BLOCK_HEADERS, MSG_DISCONNECT, MSG_GET_BLOCK_HEADERS, MSG_NEW_BLOCK,
+        MSG_ACCOUNT_STATE, MSG_BLOCK_HEADERS, MSG_CHAIN_HEAD, MSG_DISCONNECT,
+        MSG_GET_ACCOUNT_STATE, MSG_GET_BLOCK_HEADERS, MSG_GET_CHAIN_HEAD, MSG_NEW_BLOCK,
         MSG_NEW_BLOCK_HASHES, MSG_PING, MSG_PONG, MSG_STATUS, MSG_TRANSACTIONS,
     },
     error::NetworkError,
@@ -180,6 +181,40 @@ impl Decoder for EthCodec {
                     reason: reason.to_string(),
                 }))
             }
+            MSG_GET_ACCOUNT_STATE => {
+                if fields.len() != 1 {
+                    return Err(NetworkError::Decode(RlpError::InvalidLength(fields.len())));
+                }
+                Ok(Some(Message::GetAccountState {
+                    address: Address::from_rlp_item(&fields[0])?,
+                }))
+            }
+            MSG_ACCOUNT_STATE => {
+                if fields.len() != 3 {
+                    return Err(NetworkError::Decode(RlpError::InvalidLength(fields.len())));
+                }
+                Ok(Some(Message::AccountState {
+                    address: Address::from_rlp_item(&fields[0])?,
+                    nonce: u64::from_rlp_item(&fields[1])?,
+                    balance: u128::from_rlp_item(&fields[2])?,
+                }))
+            }
+            MSG_GET_CHAIN_HEAD => {
+                if !fields.is_empty() {
+                    return Err(NetworkError::Decode(RlpError::InvalidLength(fields.len())));
+                }
+                Ok(Some(Message::GetChainHead))
+            }
+            MSG_CHAIN_HEAD => {
+                if fields.len() != 3 {
+                    return Err(NetworkError::Decode(RlpError::InvalidLength(fields.len())));
+                }
+                Ok(Some(Message::ChainHead {
+                    number: u64::from_rlp_item(&fields[0])?,
+                    hash: B256::from_rlp_item(&fields[1])?,
+                    total_difficulty: u128::from_rlp_item(&fields[2])?,
+                }))
+            }
             _ => Err(NetworkError::Decode(RlpError::UnexpectedType(tag))),
         }
     }
@@ -255,8 +290,59 @@ mod tests {
             (Message::Disconnect { reason: r1 }, Message::Disconnect { reason: r2 }) => {
                 assert_eq!(r1, r2);
             }
+            (
+                Message::GetAccountState { address: a1 },
+                Message::GetAccountState { address: a2 },
+            ) => {
+                assert_eq!(a1, a2);
+            }
+            (
+                Message::AccountState {
+                    address: a1,
+                    nonce: n1,
+                    balance: b1,
+                },
+                Message::AccountState {
+                    address: a2,
+                    nonce: n2,
+                    balance: b2,
+                },
+            ) => {
+                assert_eq!(a1, a2);
+                assert_eq!(n1, n2);
+                assert_eq!(b1, b2);
+            }
+            (Message::GetChainHead, Message::GetChainHead) => {}
+            (
+                Message::ChainHead {
+                    number: n1,
+                    hash: h1,
+                    total_difficulty: t1,
+                },
+                Message::ChainHead {
+                    number: n2,
+                    hash: h2,
+                    total_difficulty: t2,
+                },
+            ) => {
+                assert_eq!(n1, n2);
+                assert_eq!(h1, h2);
+                assert_eq!(t1, t2);
+            }
             _ => panic!("variant mismatch"),
         }
+    }
+
+    fn encode_frame_with_fields(tag: u8, fields: Vec<RlpItem>) -> BytesMut {
+        let mut payload = BytesMut::new();
+        encode(&RlpItem::List(fields), &mut payload).unwrap();
+        let payload = payload.freeze();
+        let frame_length = 1 + payload.len();
+        let mut buf = BytesMut::new();
+        buf.put_u32(frame_length as u32);
+        buf.put_u8(tag);
+        buf.put_slice(&payload);
+        buf
     }
 
     fn test_header(number: u64, byte: u8) -> Header {
@@ -372,6 +458,10 @@ mod tests {
             MSG_NEW_BLOCK_HASHES,
             MSG_BLOCK_HEADERS,
             MSG_DISCONNECT,
+            MSG_GET_ACCOUNT_STATE,
+            MSG_ACCOUNT_STATE,
+            MSG_GET_CHAIN_HEAD,
+            MSG_CHAIN_HEAD,
         ];
         let mut deduped = tags.to_vec();
 
@@ -469,6 +559,135 @@ mod tests {
             .unwrap()
             .expect("frame should decode");
         assert_message_eq(&decoded, &msg);
+    }
+
+    #[test]
+    fn test_roundtrip_get_account_state() {
+        let msg = Message::GetAccountState {
+            address: Address::from([0xab; 20]),
+        };
+
+        let mut codec = EthCodec();
+        let mut buf = BytesMut::new();
+        codec.encode(msg.clone(), &mut buf).unwrap();
+
+        assert_eq!(buf[4], MSG_GET_ACCOUNT_STATE);
+
+        let decoded = codec
+            .decode(&mut buf)
+            .unwrap()
+            .expect("frame should decode");
+        assert_message_eq(&decoded, &msg);
+    }
+
+    #[test]
+    fn test_roundtrip_account_state() {
+        let msg = Message::AccountState {
+            address: Address::from([0xcd; 20]),
+            nonce: 7,
+            balance: 1_000_000_000_000_000_000,
+        };
+
+        let mut codec = EthCodec();
+        let mut buf = BytesMut::new();
+        codec.encode(msg.clone(), &mut buf).unwrap();
+
+        assert_eq!(buf[4], MSG_ACCOUNT_STATE);
+
+        let decoded = codec
+            .decode(&mut buf)
+            .unwrap()
+            .expect("frame should decode");
+        assert_message_eq(&decoded, &msg);
+    }
+
+    #[test]
+    fn test_roundtrip_get_chain_head() {
+        let msg = Message::GetChainHead;
+
+        let mut codec = EthCodec();
+        let mut buf = BytesMut::new();
+        codec.encode(msg.clone(), &mut buf).unwrap();
+
+        assert_eq!(buf[4], MSG_GET_CHAIN_HEAD);
+
+        let decoded = codec
+            .decode(&mut buf)
+            .unwrap()
+            .expect("frame should decode");
+        assert_message_eq(&decoded, &msg);
+    }
+
+    #[test]
+    fn test_roundtrip_chain_head() {
+        let msg = Message::ChainHead {
+            number: 42,
+            hash: B256::from([0xef; 32]),
+            total_difficulty: 123_456_789,
+        };
+
+        let mut codec = EthCodec();
+        let mut buf = BytesMut::new();
+        codec.encode(msg.clone(), &mut buf).unwrap();
+
+        assert_eq!(buf[4], MSG_CHAIN_HEAD);
+
+        let decoded = codec
+            .decode(&mut buf)
+            .unwrap()
+            .expect("frame should decode");
+        assert_message_eq(&decoded, &msg);
+    }
+
+    #[test]
+    fn test_decode_get_account_state_invalid_length() {
+        let mut codec = EthCodec();
+        let mut buf = encode_frame_with_fields(MSG_GET_ACCOUNT_STATE, vec![]);
+
+        let err = codec.decode(&mut buf).unwrap_err();
+        assert!(matches!(
+            err,
+            NetworkError::Decode(RlpError::InvalidLength(0))
+        ));
+    }
+
+    #[test]
+    fn test_decode_account_state_invalid_length() {
+        let mut codec = EthCodec();
+        let mut buf = encode_frame_with_fields(
+            MSG_ACCOUNT_STATE,
+            vec![Address::from([0xcd; 20]).to_rlp_item()],
+        );
+
+        let err = codec.decode(&mut buf).unwrap_err();
+        assert!(matches!(
+            err,
+            NetworkError::Decode(RlpError::InvalidLength(1))
+        ));
+    }
+
+    #[test]
+    fn test_decode_get_chain_head_invalid_length() {
+        let mut codec = EthCodec();
+        let mut buf = encode_frame_with_fields(MSG_GET_CHAIN_HEAD, vec![1u64.to_rlp_item()]);
+
+        let err = codec.decode(&mut buf).unwrap_err();
+        assert!(matches!(
+            err,
+            NetworkError::Decode(RlpError::InvalidLength(1))
+        ));
+    }
+
+    #[test]
+    fn test_decode_chain_head_invalid_length() {
+        let mut codec = EthCodec();
+        let mut buf = encode_frame_with_fields(MSG_CHAIN_HEAD, vec![42u64.to_rlp_item()]);
+
+        let err = codec.decode(&mut buf).unwrap_err();
+        assert!(matches!(
+            err,
+            NetworkError::Decode(RlpError::InvalidLength(1))
+        ));
     }
 
     #[test]

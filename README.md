@@ -1,58 +1,181 @@
-# rust-eth-playground
+# Mini ETH Node
 
-A from-scratch Rust implementation of Ethereum protocol primitives. The goal is to internalise every significant pattern used in [Reth](https://github.com/paradigmxyz/reth), [Revm](https://github.com/bluealloy/revm), [Lighthouse](https://github.com/sigp/lighthouse), and [Alloy](https://github.com/alloy-rs/core) by building miniature versions of them.
+A small Ethereum-like execution node built from first principles in Rust. The project implements the core pieces needed to accept signed value-transfer blocks over a TCP protocol, validate parent/head relationships, execute transactions against in-memory state, update the chain head, expose basic account/head queries, and drive the node with a deterministic test client.
 
-**Rule:** every function returns `Result`. No `.unwrap()` outside tests.
+The code is intentionally compact and educational, but the architecture follows real client boundaries: protocol messages stay in the networking layer, the processor owns canonical state, execution lives in its own crate, and the block builder only creates signed block envelopes from node-provided state.
 
-## Workspace layout
+## Scope
 
+Implemented:
+
+- Ethereum-style primitive types: addresses, hashes, headers, blocks, accounts, transactions, signed transactions, genesis config, and chain head.
+- RLP encoding/decoding for core types and networking messages.
+- Keccak/RLP header hashing.
+- ECDSA transaction signing and sender recovery.
+- Merkle Patricia Trie state-root calculation for account state.
+- In-memory provider with block, transaction, receipt, account, and storage maps.
+- Journal rollback for execution state changes.
+- Value-transfer execution pipeline with validation, receipts, gas accounting, nonce checks, and balance updates.
+- Block processor with pending queue, out-of-order buffering, parent/head validation, sender recovery, execution, block commitment, metrics, and stale-block rejection.
+- Async TCP networking with handshake, framed messages, peer manager, ping/pong, block forwarding, account-state query, and chain-head query.
+- Node binary that wires processor, networking manager, listener, shared chain head, metrics, tracing, and graceful shutdown.
+- Test client binary that reconstructs deterministic genesis keys, handshakes with the node, resumes from the node's current head, queries account state, builds signed blocks, sends them one at a time, and waits for processing before continuing.
+
+Not implemented:
+
+- Persistent database storage.
+- Fork choice or competing chain handling.
+- Full Ethereum consensus validation.
+- EVM bytecode execution.
+- Contract storage changes through transactions.
+- Transaction pool.
+- Real devp2p discovery/encryption.
+
+## Workspace Layout
+
+```text
+mini-eth-node/
+├── block-builder/        # Builds signed blocks from deterministic keys and node account snapshots
+├── core/
+│   ├── execution/        # Provider traits, in-memory provider, executor, validator, pipeline
+│   ├── networking/       # TCP protocol, codec, connection tasks, peer manager
+│   ├── rlp-codec/        # RLP, signing, hashing, trie
+│   └── types/            # Domain types shared by all crates
+├── node/                 # Node binary and test-client binary
+└── processor/            # BlockProcessor, ProcessorMessage, metrics, processor errors
 ```
-rust-eth-playground/
-├── types/        # Newtypes, Transaction enum, errors
-├── rlp-codec/    # RLP encode/decode, signing, Merkle Patricia Trie
-├── networking/   # Async TCP p2p with tokio + mpsc/broadcast
-└── execution/    # Provider traits, executor, validator, pipeline
+
+## Architecture
+
+The node runs three long-lived async tasks:
+
+- Listener: accepts TCP connections and spawns per-peer connection tasks.
+- Manager: tracks peers, routes inbound network messages, handles pings, and sends targeted outbound messages.
+- Processor: owns canonical block/state execution through its pipeline provider.
+
+The networking crate does not depend on the processor crate. Instead, the node binary acts as an adapter:
+
+```text
+peer connection
+  -> networking manager
+  -> NetworkEvent
+  -> node adapter
+  -> ProcessorMessage
+  -> BlockProcessor
 ```
 
-The crates form a layered dependency graph: `types` → `rlp-codec` → `execution`, with `networking` depending on `types` and `rlp-codec`.
+Responses such as account state and chain head go back through the manager using `PeerEvent::SendMessage`.
 
-## What's inside
+The processor owns authoritative state. Networking and the test client do not access the provider directly. Account nonces and balances are queried through protocol messages:
 
-### `types` — core domain types
-- `Address` (20 bytes), `B256` (32 bytes), `Bloom` (256 bytes) as newtypes with manually implemented `Display`, `LowerHex`, `UpperHex`, `From`, `AsRef`, `TryFrom<&[u8]>`, `FromStr`, `Hash`, `Default`.
-- `Transaction` enum with `Legacy`, `Eip1559`, and `Eip4844` variants, plus `AccessListItem`.
-- Helper methods: `effective_gas_price`, `max_cost`, `tx_type`, `is_create`, all using checked arithmetic.
-- `DecodeError` and `TransactionError` built with `thiserror`, including `#[from]` conversions.
+```text
+GetAccountState -> AccountState
+GetChainHead    -> ChainHead
+```
 
-### `rlp-codec` — RLP, signing, and tries
-- `RlpItem` enum with hand-written encoder and decoder covering single bytes, short/long strings, and short/long lists.
-- `RlpEncodable` and `RlpDecodable` traits implemented for `u64`, `u128`, `bool`, `Vec<u8>`, `Address`, `B256`, and `Transaction`.
-- Roundtrip tests over deeply-nested and edge-case inputs.
-- **EIP-155 transaction signing** (`signing.rs`): keccak256 helper, EIP-155 legacy payload, EIP-2718 typed envelopes for EIP-1559 / EIP-4844, ECDSA signing via `k256`, sender recovery, `SignedTransaction::hash()` over the wire format. `SigningError` propagates RLP and ECDSA failures via `#[from]`.
-- **Merkle Patricia Trie** (`trie.rs`): leaf / extension / branch nodes, nibble-walking insert with path-splitting, `root_hash` that inlines nodes < 32 bytes and hashes larger ones.
+The block builder does not execute transactions or predict state. It signs transactions using account snapshots returned by the node and maintains only local block envelope state: current number, current hash, deterministic timestamp, chain ID, and signing keys.
 
-### `networking` — async p2p
-- `tokio_util::codec::{Encoder, Decoder}` implementation using a 4-byte big-endian length prefix, 1-byte type tag, and RLP-encoded payload, with partial-read handling.
-- Message enum: `Ping`, `Pong`, `Status`, `Transactions`, `GetBlockHeaders`.
-- Three-layer architecture: TCP listener → per-connection tasks → central manager task communicating over `mpsc` channels.
-- `tokio::select!` in the manager driving peer messages, a 10-second ping interval, and a `broadcast`-channel shutdown wired to ctrl-c.
-- Shared chain state behind `Arc<RwLock<...>>`.
-- `JoinSet`-based graceful shutdown.
+## Running
 
-### `execution` — provider traits and pipeline
-- Five provider traits (`BlockProvider`, `HeaderProvider`, `StateProvider`, `TransactionProvider`, `ReceiptProvider`) and a `FullProvider` supertrait with a blanket impl, mirroring Reth's split.
-- `InMemoryProvider` backed by `HashMap`s implementing all five traits.
-- `CachedProvider<T>` — generic cache wrapper exercising trait bounds, forwarding, and interior-mutability decisions.
-- `BlockExecutor` trait with associated output type, `ConsensusValidator` trait, and a `Pipeline` generic over four trait-bounded type parameters.
-- **Production-faithful sender handling**: blocks store `Vec<SignedTransaction>`; senders are recovered into a `BlockWithSenders { block, senders }` wrapper before execution, mirroring Reth's pattern (rather than caching `from` on the transaction the way geth does).
-- Receipts use the real `SignedTransaction::hash()` rather than a placeholder.
-
-## Building and testing
+Build everything:
 
 ```sh
 cargo build --workspace
-cargo test --workspace
-
-# Run the networking demo binary
-cargo run -p networking
 ```
+
+Run all tests:
+
+```sh
+cargo test --workspace
+```
+
+Start the node:
+
+```sh
+cargo run --bin node
+```
+
+Run with debug logs:
+
+```sh
+cargo run --bin node -- --log-level debug
+```
+
+Inspect node configuration without starting networking:
+
+```sh
+cargo run --bin node -- --dry-run
+```
+
+In another terminal, run the test client:
+
+```sh
+cargo run --bin test-client
+```
+
+The default client sends 10 blocks with 3 signed value-transfer transactions per block. It queries the node for each sender's account state before building a block, sends the block, then waits until sender nonces advance before sending the next block.
+
+You can run the client again without restarting the node. It queries the current chain head and resumes from there, so a second default run sends blocks 11 through 20.
+
+Stop the node with `Ctrl-C`. The node logs a shutdown metrics summary including received blocks, committed blocks, validation rejections, execution rejections, committed transactions, total gas, and final chain head.
+
+## Useful Commands
+
+Node help:
+
+```sh
+cargo run --bin node -- --help
+```
+
+Test client help:
+
+```sh
+cargo run --bin test-client -- --help
+```
+
+Run only processor tests:
+
+```sh
+cargo test -p processor
+```
+
+Run only networking tests:
+
+```sh
+cargo test -p networking --lib
+```
+
+Run only block builder tests:
+
+```sh
+cargo test -p block-builder
+```
+
+## Current Protocol Messages
+
+The TCP protocol uses a 4-byte big-endian frame length, a 1-byte message tag, and an RLP-encoded payload.
+
+Supported messages include:
+
+- `Ping`
+- `Pong`
+- `Status { chain_id, head_hash, total_difficulty }`
+- `Transactions { txs }`
+- `GetBlockHeaders { start_hash, count }`
+- `NewBlock { block, td }`
+- `NewBlockHashes { new_blocks }`
+- `BlockHeaders { headers }`
+- `Disconnect { reason }`
+- `GetAccountState { address }`
+- `AccountState { address, nonce, balance }`
+- `GetChainHead`
+- `ChainHead { number, hash, total_difficulty }`
+
+## Design Rules
+
+- Implementation code should return `Result` and avoid `unwrap`.
+- Tests may use `unwrap` where failure should abort the test immediately.
+- Processor state is authoritative.
+- Networking remains protocol/routing focused and does not import processor types.
+- The block builder does not duplicate execution logic.
+- Generated blocks currently use placeholder header roots for state and transactions; execution output logs the computed state root after processing.

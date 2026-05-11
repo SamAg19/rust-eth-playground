@@ -7,3 +7,7 @@ pub const MSG_NEW_BLOCK: u8 = 0x07;
 pub const MSG_NEW_BLOCK_HASHES: u8 = 0x08;
 pub const MSG_BLOCK_HEADERS: u8 = 0x09;
 pub const MSG_DISCONNECT: u8 = 0x0a;
+pub const MSG_GET_ACCOUNT_STATE: u8 = 0x0b;
+pub const MSG_ACCOUNT_STATE: u8 = 0x0c;
+pub const MSG_GET_CHAIN_HEAD: u8 = 0x0d;
+pub const MSG_CHAIN_HEAD: u8 = 0x0e;

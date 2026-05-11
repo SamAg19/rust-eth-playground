@@ -32,9 +32,10 @@ impl<E: BlockExecutor, V: ConsensusValidator> Pipeline<E, V> {
             .validate_header(&block_with_senders.block.header, &parent_header)?;
         self.validator.validate_body(&block_with_senders.block)?;
         self.provider.begin_journal()?;
-        let output = self.executor
+        let output = self
+            .executor
             .execute(block_with_senders, &mut self.provider);
-        if let Err(_) = output {
+        if output.is_err() {
             self.provider.rollback_journal();
         } else {
             self.provider.commit_journal();
@@ -301,7 +302,14 @@ mod tests {
             pipeline.provider.get_account(test_sender()).unwrap(),
             original_sender
         );
-        assert_eq!(pipeline.provider.get_account(recipient_addr()).unwrap().balance, 0);
+        assert_eq!(
+            pipeline
+                .provider
+                .get_account(recipient_addr())
+                .unwrap()
+                .balance,
+            0
+        );
         assert_eq!(
             pipeline
                 .provider

@@ -1,12 +1,13 @@
 use bytes::Bytes;
 use rlp_codec::{RlpDecodable, RlpEncodable, RlpError, RlpItem};
 use std::str;
-use types::{B256, Block, Header, Transaction};
+use types::{Address, B256, Block, Header, Transaction};
 
 use crate::{
     chain::BlockAnnouncement,
     constants::{
-        MSG_BLOCK_HEADERS, MSG_DISCONNECT, MSG_GET_BLOCK_HEADERS, MSG_NEW_BLOCK,
+        MSG_ACCOUNT_STATE, MSG_BLOCK_HEADERS, MSG_CHAIN_HEAD, MSG_DISCONNECT,
+        MSG_GET_ACCOUNT_STATE, MSG_GET_BLOCK_HEADERS, MSG_GET_CHAIN_HEAD, MSG_NEW_BLOCK,
         MSG_NEW_BLOCK_HASHES, MSG_PING, MSG_PONG, MSG_STATUS, MSG_TRANSACTIONS,
     },
 };
@@ -39,6 +40,20 @@ pub enum Message {
     },
     Disconnect {
         reason: String,
+    },
+    GetAccountState {
+        address: Address,
+    },
+    AccountState {
+        address: Address,
+        nonce: u64,
+        balance: u128,
+    },
+    GetChainHead,
+    ChainHead {
+        number: u64,
+        hash: B256,
+        total_difficulty: u128,
     },
 }
 
@@ -118,6 +133,40 @@ impl RlpEncodable for Message {
                 RlpItem::List(vec![
                     tag.to_rlp_item(),
                     RlpItem::Bytes(Bytes::from(reason.clone())),
+                ])
+            }
+            Message::GetAccountState { address } => {
+                let tag = MSG_GET_ACCOUNT_STATE as u64;
+                RlpItem::List(vec![tag.to_rlp_item(), address.to_rlp_item()])
+            }
+            Message::AccountState {
+                address,
+                nonce,
+                balance,
+            } => {
+                let tag = MSG_ACCOUNT_STATE as u64;
+                RlpItem::List(vec![
+                    tag.to_rlp_item(),
+                    address.to_rlp_item(),
+                    nonce.to_rlp_item(),
+                    balance.to_rlp_item(),
+                ])
+            }
+            Message::GetChainHead => {
+                let tag = MSG_GET_CHAIN_HEAD as u64;
+                RlpItem::List(vec![tag.to_rlp_item()])
+            }
+            Message::ChainHead {
+                number,
+                hash,
+                total_difficulty,
+            } => {
+                let tag = MSG_CHAIN_HEAD as u64;
+                RlpItem::List(vec![
+                    tag.to_rlp_item(),
+                    number.to_rlp_item(),
+                    hash.to_rlp_item(),
+                    total_difficulty.to_rlp_item(),
                 ])
             }
         }
@@ -248,6 +297,44 @@ impl RlpDecodable for Message {
                         };
                         Ok(Message::Disconnect {
                             reason: reason.to_string(),
+                        })
+                    }
+                    MSG_GET_ACCOUNT_STATE => {
+                        if x.len() != 2 {
+                            return Err(RlpError::InvalidLength(x.len()));
+                        }
+
+                        Ok(Message::GetAccountState {
+                            address: Address::from_rlp_item(&x[1])?,
+                        })
+                    }
+                    MSG_ACCOUNT_STATE => {
+                        if x.len() != 4 {
+                            return Err(RlpError::InvalidLength(x.len()));
+                        }
+
+                        Ok(Message::AccountState {
+                            address: Address::from_rlp_item(&x[1])?,
+                            nonce: u64::from_rlp_item(&x[2])?,
+                            balance: u128::from_rlp_item(&x[3])?,
+                        })
+                    }
+                    MSG_GET_CHAIN_HEAD => {
+                        if x.len() != 1 {
+                            return Err(RlpError::InvalidLength(x.len()));
+                        }
+
+                        Ok(Message::GetChainHead)
+                    }
+                    MSG_CHAIN_HEAD => {
+                        if x.len() != 4 {
+                            return Err(RlpError::InvalidLength(x.len()));
+                        }
+
+                        Ok(Message::ChainHead {
+                            number: u64::from_rlp_item(&x[1])?,
+                            hash: B256::from_rlp_item(&x[2])?,
+                            total_difficulty: u128::from_rlp_item(&x[3])?,
                         })
                     }
                     _ => Err(RlpError::UnexpectedType(tag)),

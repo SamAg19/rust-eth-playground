@@ -1,23 +1,37 @@
-use std::{collections::{BTreeMap, HashMap}, sync::{Arc, atomic::{AtomicU64, Ordering}}};
-use tokio::{
-    sync::{RwLock, mpsc},
-};
 use bytes::BytesMut;
-use execution::{InMemoryProvider, executor::{BlockWithSenders, ValueTransferExecutor}, pipeline::Pipeline, providers::BlockProvider, validator::StrictValidator};
+use execution::{
+    InMemoryProvider,
+    executor::{BlockWithSenders, ValueTransferExecutor},
+    pipeline::Pipeline,
+    providers::{BlockProvider, StateProvider},
+    validator::StrictValidator,
+};
 use networking::PeerId;
 use rlp_codec::{RlpEncodable, encode, hash_header, signing::recover_sender};
-use tracing::{debug, info, trace, warn, Instrument};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+};
+use tokio::sync::{RwLock, mpsc, oneshot};
+use tracing::{Instrument, debug, info, trace, warn};
 use types::{Account, Address, B256, Block, ChainHead};
 
 use crate::errors::ProcessorError;
 
 #[derive(Debug)]
 pub enum ProcessorMessage {
-    NewBlock{
+    NewBlock {
         block: Block,
-        peer_id: PeerId
+        peer_id: PeerId,
     },
-    Shutdown
+    GetAccountState {
+        address: Address,
+        response_tx: oneshot::Sender<Result<Account, ProcessorError>>,
+    },
+    Shutdown,
 }
 
 #[derive(Debug)]
@@ -32,7 +46,7 @@ pub struct Metrics {
     pub blocks_rejected_validation: AtomicU64,
     pub blocks_rejected_execution: AtomicU64,
     pub transactions_committed: AtomicU64,
-    pub total_gas_committed: AtomicU64
+    pub total_gas_committed: AtomicU64,
 }
 
 //blocks_received: 5,
@@ -41,7 +55,6 @@ pub struct Metrics {
 //blocks_rejected_execution: 1,
 //transactions_committed: 9,
 
-
 pub struct BlockProcessor {
     pending_map: BTreeMap<u64, PendingBlock>,
     pub chain_id: u64,
@@ -49,35 +62,48 @@ pub struct BlockProcessor {
     pub pipeline: Pipeline<ValueTransferExecutor, StrictValidator>,
     pub accounts: HashMap<Address, Account>,
     pub shared_head: Arc<RwLock<ChainHead>>,
-    pub metrics: Arc<Metrics>
+    pub metrics: Arc<Metrics>,
 }
 
 impl BlockProcessor {
-    pub async fn new(genesis_block: Block, initial_account: HashMap<Address, Account>, chain_id: u64, shared_head: Arc<RwLock<ChainHead>>) -> Result<Self, ProcessorError> {
+    pub async fn new(
+        genesis_block: Block,
+        initial_account: HashMap<Address, Account>,
+        chain_id: u64,
+        shared_head: Arc<RwLock<ChainHead>>,
+    ) -> Result<Self, ProcessorError> {
         let chain_head = shared_head.read().await.clone();
-        let metrics = Arc::new(
-            Metrics{
-                blocks_received: AtomicU64::new(0),
-                blocks_committed: AtomicU64::new(0),
-                blocks_rejected_validation: AtomicU64::new(0),
-                blocks_rejected_execution: AtomicU64::new(0),
-                transactions_committed: AtomicU64::new(0),
-                total_gas_committed: AtomicU64::new(0)
-            }
-        );
+        let metrics = Arc::new(Metrics {
+            blocks_received: AtomicU64::new(0),
+            blocks_committed: AtomicU64::new(0),
+            blocks_rejected_validation: AtomicU64::new(0),
+            blocks_rejected_execution: AtomicU64::new(0),
+            transactions_committed: AtomicU64::new(0),
+            total_gas_committed: AtomicU64::new(0),
+        });
 
         let mut initial_block_processor = Self {
             pending_map: BTreeMap::new(),
             chain_id,
             chain_head,
-            pipeline: Pipeline::new(InMemoryProvider::default(), ValueTransferExecutor, StrictValidator { max_txs: 100 }),
+            pipeline: Pipeline::new(
+                InMemoryProvider::default(),
+                ValueTransferExecutor,
+                StrictValidator { max_txs: 100 },
+            ),
             accounts: initial_account,
             shared_head,
-            metrics
+            metrics,
         };
-        initial_block_processor.pipeline.provider.insert_block(genesis_block)?;
+        initial_block_processor
+            .pipeline
+            .provider
+            .insert_block(genesis_block)?;
         for (address, account) in &initial_block_processor.accounts {
-            initial_block_processor.pipeline.provider.set_account(*address,account.clone());
+            initial_block_processor
+                .pipeline
+                .provider
+                .set_account(*address, account.clone());
             let mut buffer = BytesMut::new();
             encode(&account.to_rlp_item(), &mut buffer)?;
         }
@@ -106,6 +132,19 @@ impl BlockProcessor {
                         }
                     }
                 }
+                Some(ProcessorMessage::GetAccountState {
+                    address,
+                    response_tx,
+                }) => {
+                    let response = self
+                        .pipeline
+                        .provider
+                        .get_account(address)
+                        .map_err(ProcessorError::Execution);
+                    if response_tx.send(response).is_err() {
+                        debug!(%address, "account state response receiver dropped");
+                    }
+                }
                 None => {
                     debug!("processor channel closed");
                     match self.try_drain().await {
@@ -128,12 +167,38 @@ impl BlockProcessor {
         }
     }
 
-    async fn handle_new_block(&mut self, block: Block, peer_id: PeerId) -> Result<(), ProcessorError>  {
-        self.pending_map.insert(block.header.number, PendingBlock {
-            block,
-            peer_id,
-        });
+    async fn handle_new_block(
+        &mut self,
+        block: Block,
+        peer_id: PeerId,
+    ) -> Result<(), ProcessorError> {
+        let block_number = block.header.number;
+        let current_head_number = self.chain_head.number;
+        let expected_next_number = current_head_number + 1;
+
         self.metrics.blocks_received.fetch_add(1, Ordering::Relaxed);
+
+        if block_number <= current_head_number {
+            let error = ProcessorError::InvalidBlockNumber {
+                actual: block_number,
+                expected: expected_next_number,
+            };
+            self.metrics
+                .blocks_rejected_validation
+                .fetch_add(1, Ordering::Relaxed);
+            warn!(
+                block_number,
+                peer_id = %peer_id,
+                current_head_number,
+                expected_next_number,
+                error = %error,
+                "stale block rejected"
+            );
+            return Err(error);
+        }
+
+        self.pending_map
+            .insert(block_number, PendingBlock { block, peer_id });
 
         trace!(?self.pending_map, "pending map after block insert");
         self.try_drain().await?;
@@ -178,13 +243,22 @@ impl BlockProcessor {
             .provider
             .get_block_by_hash(block.header.parent_hash)
             .map_err(|_| {
-                self.metrics.blocks_rejected_validation.fetch_add(1, Ordering::Relaxed);
-                ProcessorError::ParentNotFound { block_number: number }
+                self.metrics
+                    .blocks_rejected_validation
+                    .fetch_add(1, Ordering::Relaxed);
+                ProcessorError::ParentNotFound {
+                    block_number: number,
+                }
             })?;
 
         if parent_block.header.number + 1 != number {
-            self.metrics.blocks_rejected_validation.fetch_add(1, Ordering::Relaxed);
-            return Err(ProcessorError::InvalidBlockNumber { actual: number, expected: parent_block.header.number + 1 });
+            self.metrics
+                .blocks_rejected_validation
+                .fetch_add(1, Ordering::Relaxed);
+            return Err(ProcessorError::InvalidBlockNumber {
+                actual: number,
+                expected: parent_block.header.number + 1,
+            });
         }
 
         debug!(
@@ -194,8 +268,10 @@ impl BlockProcessor {
         );
 
         if parent_block.header.timestamp >= block.header.timestamp {
-            self.metrics.blocks_rejected_validation.fetch_add(1, Ordering::Relaxed);
-            
+            self.metrics
+                .blocks_rejected_validation
+                .fetch_add(1, Ordering::Relaxed);
+
             let parent_timestamp = parent_block.header.timestamp;
             let block_timestamp = block.header.timestamp;
 
@@ -206,18 +282,28 @@ impl BlockProcessor {
         }
 
         if self.chain_head.number + 1 != number {
-            self.metrics.blocks_rejected_validation.fetch_add(1, Ordering::Relaxed);
-            return Err(ProcessorError::InvalidBlockNumber { actual: number, expected: self.chain_head.number + 1 });
+            self.metrics
+                .blocks_rejected_validation
+                .fetch_add(1, Ordering::Relaxed);
+            return Err(ProcessorError::InvalidBlockNumber {
+                actual: number,
+                expected: self.chain_head.number + 1,
+            });
         }
 
         info!("Processing Block Number {}", number);
 
         let block_with_senders = self.build_block_with_senders(&block)?;
 
-        let output = self.pipeline.execute(&block_with_senders).map_err(|e| {
-            self.metrics.blocks_rejected_execution.fetch_add(1, Ordering::Relaxed);
-            e
-        })?;
+        let output = match self.pipeline.execute(&block_with_senders) {
+            Ok(output) => output,
+            Err(error) => {
+                self.metrics
+                    .blocks_rejected_execution
+                    .fetch_add(1, Ordering::Relaxed);
+                return Err(error.into());
+            }
+        };
 
         let hash = hash_header(&block.header)?;
 
@@ -230,11 +316,8 @@ impl BlockProcessor {
         self.chain_head.hash = hash;
         self.chain_head.total_difficulty += gas_used;
 
-        self.write_to_shared_head(
-            number, 
-            hash, 
-            self.chain_head.total_difficulty
-        ).await;
+        self.write_to_shared_head(number, hash, self.chain_head.total_difficulty)
+            .await;
         let tx_count = output.receipts.len() as u64;
 
         info!(
@@ -246,10 +329,16 @@ impl BlockProcessor {
             state_root = format!("{}", output.state_root),
             "block committed"
         );
-        
-        self.metrics.blocks_committed.fetch_add(1, Ordering::Relaxed);
-        self.metrics.transactions_committed.fetch_add(tx_count, Ordering::Relaxed);
-        self.metrics.total_gas_committed.fetch_add(output.gas_used, Ordering::Relaxed);
+
+        self.metrics
+            .blocks_committed
+            .fetch_add(1, Ordering::Relaxed);
+        self.metrics
+            .transactions_committed
+            .fetch_add(tx_count, Ordering::Relaxed);
+        self.metrics
+            .total_gas_committed
+            .fetch_add(output.gas_used, Ordering::Relaxed);
 
         Ok(())
     }
@@ -266,19 +355,19 @@ impl BlockProcessor {
         for tx in block.transactions() {
             senders.push(recover_sender(tx, self.chain_id)?);
         }
-        Ok(BlockWithSenders { block: block.clone(), senders })
+        Ok(BlockWithSenders {
+            block: block.clone(),
+            senders,
+        })
     }
-
 }
-
-
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use execution::{
-        error::ExecutionError, executor::compute_state_root, providers::StateProvider,
-        InMemoryProvider,
+        InMemoryProvider, error::ExecutionError, executor::compute_state_root,
+        providers::StateProvider,
     };
     use rlp_codec::{
         hash_header,
@@ -288,15 +377,15 @@ mod tests {
         io::{self, Write},
         sync::Mutex,
     };
-    use tokio::time::{timeout, Duration};
+    use tokio::time::{Duration, timeout};
     use tracing::{Instrument, Level};
     use tracing_subscriber::fmt::MakeWriter;
     use types::{Header, Transaction};
 
     const TEST_PRIVATE_KEY: [u8; 32] = [
-        0x4c, 0x0c, 0x4d, 0x14, 0x6c, 0x46, 0xed, 0x91, 0xf6, 0xa9, 0x35, 0x09, 0x46, 0xa3,
-        0x69, 0x9e, 0xb1, 0xfb, 0xc1, 0x9c, 0x91, 0xc8, 0x10, 0xe6, 0xb6, 0xa7, 0x8b, 0x0c,
-        0xa6, 0x06, 0x65, 0x6f,
+        0x4c, 0x0c, 0x4d, 0x14, 0x6c, 0x46, 0xed, 0x91, 0xf6, 0xa9, 0x35, 0x09, 0x46, 0xa3, 0x69,
+        0x9e, 0xb1, 0xfb, 0xc1, 0x9c, 0x91, 0xc8, 0x10, 0xe6, 0xb6, 0xa7, 0x8b, 0x0c, 0xa6, 0x06,
+        0x65, 0x6f,
     ];
 
     #[derive(Clone)]
@@ -411,7 +500,9 @@ mod tests {
         (processor, genesis_hash, genesis_state_root)
     }
 
-    async fn test_processor_with_genesis_at_timestamp(timestamp: u64) -> (BlockProcessor, B256, B256) {
+    async fn test_processor_with_genesis_at_timestamp(
+        timestamp: u64,
+    ) -> (BlockProcessor, B256, B256) {
         test_processor_with_genesis_at_timestamp_and_chain_id(timestamp, 1).await
     }
 
@@ -461,7 +552,8 @@ mod tests {
     #[tokio::test]
     async fn constructor_stores_chain_id_for_sender_recovery() {
         let chain_id = 1337;
-        let (processor, _, _) = test_processor_with_genesis_at_timestamp_and_chain_id(0, chain_id).await;
+        let (processor, _, _) =
+            test_processor_with_genesis_at_timestamp_and_chain_id(0, chain_id).await;
 
         assert_eq!(processor.chain_id, chain_id);
     }
@@ -483,7 +575,10 @@ mod tests {
         let block_with_senders = processor.build_block_with_senders(&block).unwrap();
 
         assert_eq!(block_with_senders.block, block);
-        assert_eq!(block_with_senders.senders, vec![expected_sender_1, expected_sender_2]);
+        assert_eq!(
+            block_with_senders.senders,
+            vec![expected_sender_1, expected_sender_2]
+        );
     }
 
     #[tokio::test]
@@ -754,12 +849,19 @@ mod tests {
 
         let error = processor.process_block(block).await.unwrap_err();
 
-        assert!(matches!(error, ProcessorError::Execution(ExecutionError::GasLimitExceeded { limit: 42, used: 43 })));
+        assert!(matches!(
+            error,
+            ProcessorError::Execution(ExecutionError::GasLimitExceeded {
+                limit: 42,
+                used: 43
+            })
+        ));
     }
 
     #[tokio::test]
     async fn header_validation_rejects_timestamp_equal_to_parent_timestamp() {
-        let (mut processor, genesis_hash, genesis_state_root) = test_processor_with_genesis_at_timestamp(10).await;
+        let (mut processor, genesis_hash, genesis_state_root) =
+            test_processor_with_genesis_at_timestamp(10).await;
         let mut block = test_block(1, genesis_hash, genesis_state_root);
         block.header.timestamp = 10;
 
@@ -770,13 +872,53 @@ mod tests {
 
     #[tokio::test]
     async fn header_validation_rejects_timestamp_less_than_parent_timestamp() {
-        let (mut processor, genesis_hash, genesis_state_root) = test_processor_with_genesis_at_timestamp(10).await;
+        let (mut processor, genesis_hash, genesis_state_root) =
+            test_processor_with_genesis_at_timestamp(10).await;
         let mut block = test_block(1, genesis_hash, genesis_state_root);
         block.header.timestamp = 9;
 
         let error = processor.process_block(block).await.unwrap_err();
 
         assert_validation_failed_contains(error, &["timestamp", "10", "9"]);
+    }
+
+    #[tokio::test]
+    async fn run_returns_account_state_through_processor_query() {
+        let address = Address::from([0x42; 20]);
+        let expected_account = Account {
+            balance: 123_456_789,
+            nonce: 7,
+            code_hash: B256::zero(),
+        };
+        let mut initial_accounts = HashMap::new();
+        initial_accounts.insert(address, expected_account.clone());
+
+        let (processor, _, _) = test_processor_with_accounts(initial_accounts, 1).await;
+        let (tx, rx) = mpsc::channel(1);
+        let handle = tokio::spawn(processor.run(rx));
+        let (response_tx, response_rx) = oneshot::channel();
+
+        tx.send(ProcessorMessage::GetAccountState {
+            address,
+            response_tx,
+        })
+        .await
+        .unwrap();
+
+        let account = timeout(Duration::from_secs(1), response_rx)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(account.nonce, expected_account.nonce);
+        assert_eq!(account.balance, expected_account.balance);
+
+        tx.send(ProcessorMessage::Shutdown).await.unwrap();
+        timeout(Duration::from_secs(1), handle)
+            .await
+            .unwrap()
+            .unwrap();
     }
 
     #[tokio::test]
@@ -827,8 +969,13 @@ mod tests {
             tx.send(ProcessorMessage::Shutdown).await.unwrap();
         };
 
-        timeout(Duration::from_secs(1), send_messages).await.unwrap();
-        timeout(Duration::from_secs(1), handle).await.unwrap().unwrap();
+        timeout(Duration::from_secs(1), send_messages)
+            .await
+            .unwrap();
+        timeout(Duration::from_secs(1), handle)
+            .await
+            .unwrap()
+            .unwrap();
     }
 
     #[tokio::test]
@@ -844,7 +991,7 @@ mod tests {
             })
             .finish();
         let _ = tracing::subscriber::set_global_default(subscriber);
-        
+
         let mut initial_accounts = HashMap::new();
         initial_accounts.insert(
             Address::from([0x01; 20]),
@@ -894,8 +1041,13 @@ mod tests {
             tx.send(ProcessorMessage::Shutdown).await.unwrap();
         };
 
-        timeout(Duration::from_secs(1), send_messages).await.unwrap();
-        timeout(Duration::from_secs(1), handle).await.unwrap().unwrap();
+        timeout(Duration::from_secs(1), send_messages)
+            .await
+            .unwrap();
+        timeout(Duration::from_secs(1), handle)
+            .await
+            .unwrap()
+            .unwrap();
 
         let logs = String::from_utf8(log_output.lock().unwrap().clone()).unwrap();
         let test_logs = logs
@@ -942,14 +1094,10 @@ mod tests {
             total_difficulty: 0,
         }));
 
-        let processor = BlockProcessor::new(
-            genesis_block,
-            initial_accounts,
-            1,
-            Arc::clone(&shared_head),
-        )
-        .await
-        .unwrap();
+        let processor =
+            BlockProcessor::new(genesis_block, initial_accounts, 1, Arc::clone(&shared_head))
+                .await
+                .unwrap();
         let metrics = Arc::clone(&processor.metrics);
         let (tx, rx) = mpsc::channel(1);
         let handle = tokio::spawn(processor.run(rx));
@@ -970,8 +1118,13 @@ mod tests {
             tx.send(ProcessorMessage::Shutdown).await.unwrap();
         };
 
-        timeout(Duration::from_secs(1), send_messages).await.unwrap();
-        timeout(Duration::from_secs(1), handle).await.unwrap().unwrap();
+        timeout(Duration::from_secs(1), send_messages)
+            .await
+            .unwrap();
+        timeout(Duration::from_secs(1), handle)
+            .await
+            .unwrap()
+            .unwrap();
 
         let head = shared_head.read().await.clone();
         assert_eq!(head.number, 1);
@@ -993,6 +1146,166 @@ mod tests {
                 .blocks_committed
                 .load(std::sync::atomic::Ordering::Relaxed),
             1
+        );
+    }
+
+    #[tokio::test]
+    async fn handle_new_block_rejects_stale_block_without_pending_insert() {
+        let (mut processor, genesis_hash, genesis_state_root) = test_processor_with_genesis().await;
+        let block_1 = test_block(1, genesis_hash, genesis_state_root);
+        let block_1_hash = hash_header(&block_1.header).unwrap();
+        let block_2 = test_block(2, block_1_hash, genesis_state_root);
+        let block_2_hash = hash_header(&block_2.header).unwrap();
+        let stale_block = block_1.clone();
+
+        processor
+            .handle_new_block(block_1, PeerId(1))
+            .await
+            .unwrap();
+        processor
+            .handle_new_block(block_2, PeerId(1))
+            .await
+            .unwrap();
+
+        let head_before_stale = processor.chain_head.clone();
+        let committed_before_stale = processor
+            .metrics
+            .blocks_committed
+            .load(std::sync::atomic::Ordering::Relaxed);
+
+        let error = processor
+            .handle_new_block(stale_block, PeerId(1))
+            .await
+            .unwrap_err();
+
+        assert!(matches!(
+            error,
+            ProcessorError::InvalidBlockNumber {
+                expected: 3,
+                actual: 1
+            }
+        ));
+        assert!(!processor.pending_map.contains_key(&1));
+        assert_eq!(
+            processor
+                .metrics
+                .blocks_rejected_validation
+                .load(std::sync::atomic::Ordering::Relaxed),
+            1
+        );
+        assert_eq!(
+            processor
+                .metrics
+                .blocks_committed
+                .load(std::sync::atomic::Ordering::Relaxed),
+            committed_before_stale
+        );
+        assert_eq!(processor.chain_head.number, head_before_stale.number);
+        assert_eq!(processor.chain_head.hash, head_before_stale.hash);
+        assert_eq!(processor.chain_head.hash, block_2_hash);
+    }
+
+    #[tokio::test]
+    async fn run_rejects_duplicate_one_to_ten_blocks_as_stale() {
+        let chain_id = 1;
+        let sender_probe_tx = legacy_tx(0, Address::from([0x02; 20]), 100);
+        let sender_probe_signed_tx = sign(&sender_probe_tx, &TEST_PRIVATE_KEY, chain_id).unwrap();
+        let sender = recover_sender(&sender_probe_signed_tx, chain_id).unwrap();
+        let mut initial_accounts = HashMap::new();
+        initial_accounts.insert(
+            sender,
+            Account {
+                balance: 1_000_000_000_000_000_000,
+                nonce: 0,
+                code_hash: B256::zero(),
+            },
+        );
+
+        let (processor, genesis_hash, genesis_state_root) =
+            test_processor_with_accounts(initial_accounts, chain_id).await;
+        let shared_head = Arc::clone(&processor.shared_head);
+        let metrics = Arc::clone(&processor.metrics);
+        let mut blocks = Vec::new();
+        let mut parent_hash = genesis_hash;
+
+        for number in 1..=10 {
+            let block = block_with_three_signed_transfers(
+                number,
+                parent_hash,
+                genesis_state_root,
+                (number - 1) * 3,
+                chain_id,
+            );
+            parent_hash = hash_header(&block.header).unwrap();
+            blocks.push(block);
+        }
+        let expected_head_hash = parent_hash;
+
+        let (tx, rx) = mpsc::channel(1);
+        let handle = tokio::spawn(processor.run(rx));
+
+        let send_messages = async {
+            for block in blocks.iter().cloned() {
+                tx.send(ProcessorMessage::NewBlock {
+                    block,
+                    peer_id: PeerId(1),
+                })
+                .await
+                .unwrap();
+            }
+
+            for block in blocks {
+                tx.send(ProcessorMessage::NewBlock {
+                    block,
+                    peer_id: PeerId(2),
+                })
+                .await
+                .unwrap();
+            }
+
+            tx.send(ProcessorMessage::Shutdown).await.unwrap();
+        };
+
+        timeout(Duration::from_secs(1), send_messages)
+            .await
+            .unwrap();
+        timeout(Duration::from_secs(1), handle)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let head = shared_head.read().await.clone();
+        assert_eq!(head.number, 10);
+        assert_eq!(head.hash, expected_head_hash);
+        assert_eq!(
+            metrics
+                .blocks_received
+                .load(std::sync::atomic::Ordering::Relaxed),
+            20
+        );
+        assert_eq!(
+            metrics
+                .blocks_committed
+                .load(std::sync::atomic::Ordering::Relaxed),
+            10
+        );
+        assert_eq!(
+            metrics
+                .blocks_rejected_validation
+                .load(std::sync::atomic::Ordering::Relaxed),
+            10
+        );
+        assert_eq!(
+            metrics
+                .blocks_rejected_execution
+                .load(std::sync::atomic::Ordering::Relaxed),
+            0
+        );
+        assert_eq!(
+            metrics
+                .transactions_committed
+                .load(std::sync::atomic::Ordering::Relaxed),
+            30
         );
     }
 
@@ -1020,11 +1333,21 @@ mod tests {
         let valid_block_1 =
             block_with_three_signed_transfers(1, genesis_hash, genesis_state_root, 0, chain_id);
         let valid_block_1_hash = hash_header(&valid_block_1.header).unwrap();
-        let valid_block_2 =
-            block_with_three_signed_transfers(2, valid_block_1_hash, genesis_state_root, 3, chain_id);
+        let valid_block_2 = block_with_three_signed_transfers(
+            2,
+            valid_block_1_hash,
+            genesis_state_root,
+            3,
+            chain_id,
+        );
         let valid_block_2_hash = hash_header(&valid_block_2.header).unwrap();
-        let valid_block_3 =
-            block_with_three_signed_transfers(3, valid_block_2_hash, genesis_state_root, 6, chain_id);
+        let valid_block_3 = block_with_three_signed_transfers(
+            3,
+            valid_block_2_hash,
+            genesis_state_root,
+            6,
+            chain_id,
+        );
         let valid_block_3_hash = hash_header(&valid_block_3.header).unwrap();
 
         let mut bad_parent_hash_bytes = *genesis_hash.as_bytes();
@@ -1037,8 +1360,13 @@ mod tests {
             chain_id,
         );
 
-        let mut execution_rejected_block =
-            block_with_three_signed_transfers(4, valid_block_3_hash, genesis_state_root, 9, chain_id);
+        let mut execution_rejected_block = block_with_three_signed_transfers(
+            4,
+            valid_block_3_hash,
+            genesis_state_root,
+            9,
+            chain_id,
+        );
         let invalid_nonce_tx = legacy_tx(99, Address::from([0x44; 20]), 100);
         execution_rejected_block.transactions[0] =
             sign(&invalid_nonce_tx, &TEST_PRIVATE_KEY, chain_id).unwrap();
@@ -1064,8 +1392,13 @@ mod tests {
             tx.send(ProcessorMessage::Shutdown).await.unwrap();
         };
 
-        timeout(Duration::from_secs(1), send_messages).await.unwrap();
-        timeout(Duration::from_secs(1), handle).await.unwrap().unwrap();
+        timeout(Duration::from_secs(1), send_messages)
+            .await
+            .unwrap();
+        timeout(Duration::from_secs(1), handle)
+            .await
+            .unwrap()
+            .unwrap();
 
         let head = shared_head.read().await.clone();
         assert_eq!(head.number, 3);
