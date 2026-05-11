@@ -75,6 +75,47 @@ GetChainHead    -> ChainHead
 
 The block builder does not execute transactions or predict state. It signs transactions using account snapshots returned by the node and maintains only local block envelope state: current number, current hash, deterministic timestamp, chain ID, and signing keys.
 
+### Diagram
+
+```text
+┌──────────────┐     TCP / EthCodec     ┌──────────────────┐
+│ Test Client  │ ─────────────────────► │ Networking Layer │
+└──────────────┘                         └──────────────────┘
+                                                │
+                                                ▼
+                                         ┌────────────┐
+                                         │ Manager    │
+                                         └────────────┘
+                                          │   │   │
+                   NetworkEvent::NewBlock │   │   └── NetworkEvent::GetChainHead
+                   NetworkEvent::GetAccountState │
+                                          ▼   ▼
+                                   ┌──────────────────┐
+                                   │ Node Adapter     │
+                                   └──────────────────┘
+                                          │
+                                          ▼
+                                   ┌──────────────────┐
+                                   │ Block Processor  │
+                                   └──────────────────┘
+                                      │            │
+                                      │            └──► Shared Chain Head / Metrics
+                                      ▼
+                           ┌─────────────────────┐
+                           │ Execution Pipeline  │
+                           └─────────────────────┘
+```
+
+### Data Flow
+
+The client performs three steps repeatedly:
+
+1. Query account state for the sender addresses it needs.
+2. Query the current chain head when resuming.
+3. Build one signed block, send it, and wait for the node to advance before building the next one.
+
+The processor is the source of truth for account state and chain head updates. The networking layer only routes messages and responses.
+
 ## Running
 
 Build everything:
